@@ -2,70 +2,45 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ SNIPER V16.0 | 全幣對常駐數據監控</title>
+    <title>⚡ SNIPER V16.1 | 雙封包流控監控版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
         body { background: #050505; color: #FFD700; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
-        .card { background: #0a0a0a; border: 1px solid #1a1a1a; transition: 0.3s; position: relative; border-radius: 8px; cursor: pointer; }
-        .hunt-active { border: 1px solid #ef4444; }
-        .pinned { border: 2px solid #FFD700 !important; box-shadow: 0 0 15px rgba(255, 215, 0, 0.4); z-index: 10; }
+        .card { background: #0a0a0a; border: 1px solid #1a1a1a; transition: 0.3s; position: relative; border-radius: 8px; cursor: pointer; min-height: 140px; }
+        .pinned { border: 2px solid #FFD700 !important; box-shadow: 0 0 15px rgba(255, 215, 0, 0.4); }
         .flow-alert { animation: flow-flash 0.5s ease-in-out; }
         @keyframes flow-flash { 0% { background: #000; } 50% { background: #1e1b4b; } 100% { background: #0a0a0a; } }
         #logBox::-webkit-scrollbar { width: 4px; }
         #logBox::-webkit-scrollbar-thumb { background: #333; }
         .metric-box { background: rgba(20,20,20,0.8); border: 1px solid #222; padding: 4px; border-radius: 4px; }
-        .log-entry { border-left: 3px solid transparent; padding: 6px; margin-bottom: 4px; background: rgba(255,255,255,0.02); }
-        .buy-border { border-left-color: #22c55e; }
-        .sell-border { border-left-color: #ef4444; }
     </style>
 </head>
 <body class="h-screen flex flex-col p-2 text-[10px]">
 
     <header class="p-3 border-b border-yellow-900 flex justify-between items-center shrink-0 bg-black gap-4">
-        <div>
-            <h1 class="text-xl font-black text-yellow-500 italic uppercase">⚡ SNIPER V16.0</h1>
-            <div id="statusInfo" class="text-zinc-500 font-bold italic mt-1 uppercase">全幣對常駐數據監控中 (掛單牆/爆倉/大單)</div>
-        </div>
-        
+        <h1 class="text-xl font-black text-yellow-500 italic uppercase">⚡ SNIPER X-RADAR V16.1</h1>
         <div class="flex-1 max-w-sm">
             <input type="text" id="searchInput" placeholder="搜尋幣名 (例: BTC)..." 
                    class="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-1 text-white focus:outline-none focus:border-yellow-500 font-bold">
         </div>
-
-        <button id="sysBtn" onclick="toggleSystem()" class="bg-blue-600 text-white px-6 py-1 rounded font-black hover:bg-blue-500 uppercase">Start Radar</button>
+        <button id="sysBtn" onclick="toggleSystem()" class="bg-blue-600 text-white px-6 py-1 rounded font-black uppercase">Start Radar</button>
     </header>
 
     <div class="bg-zinc-900/50 p-2 border-b border-yellow-900/30 grid grid-cols-5 gap-4 items-center uppercase font-bold text-zinc-400">
-        <div class="space-y-1">
-            <div class="flex justify-between text-yellow-500"><span>🌀 SQZ</span><span id="v_sqz">1.2%</span></div>
-            <input type="range" id="i_sqz" min="5" max="50" value="12" class="w-full">
-        </div>
-        <div class="space-y-1">
-            <div class="flex justify-between text-green-400"><span>🎯 POC</span><span id="v_poc">1.1%</span></div>
-            <input type="range" id="i_poc" min="1" max="100" value="11" class="w-full">
-        </div>
-        <div class="space-y-1">
-            <div class="flex justify-between text-red-500"><span>🚨 SLP</span><span id="v_slp">-15%</span></div>
-            <input type="range" id="i_slp" min="5" max="50" value="15" class="w-full">
-        </div>
-        <div class="space-y-1">
-            <div class="flex justify-between text-blue-400"><span>🚀 DRV</span><span id="v_drv">90</span></div>
-            <input type="range" id="i_drv" min="10" max="150" value="90" class="w-full">
-        </div>
-        <div class="space-y-1">
-            <div class="flex justify-between text-orange-500"><span>⚡ MOM</span><span id="v_mom">0.8%</span></div>
-            <input type="range" id="i_mom" min="1" max="50" value="8" class="w-full">
-        </div>
+        <div class="space-y-1"><div>🌀 SQZ <span id="v_sqz" class="text-yellow-500">1.2%</span></div><input type="range" id="i_sqz" min="5" max="50" value="12" class="w-full"></div>
+        <div class="space-y-1"><div>🎯 POC <span id="v_poc" class="text-green-400">1.1%</span></div><input type="range" id="i_poc" min="1" max="100" value="11" class="w-full"></div>
+        <div class="space-y-1"><div>🚨 SLP <span id="v_slp" class="text-red-500">-15%</span></div><input type="range" id="i_slp" min="5" max="50" value="15" class="w-full"></div>
+        <div class="space-y-1"><div>🚀 DRV <span id="v_drv" class="text-blue-400">90</span></div><input type="range" id="i_drv" min="10" max="150" value="90" class="w-full"></div>
+        <div class="space-y-1"><div>⚡ MOM <span id="v_mom" class="text-orange-500">0.8%</span></div><input type="range" id="i_mom" min="1" max="50" value="8" class="w-full"></div>
     </div>
 
     <div class="flex flex-1 overflow-hidden gap-2 mt-2">
-        <main class="flex-1 overflow-y-auto p-2">
+        <main class="flex-1 overflow-y-auto p-2" id="scrollContainer">
             <div id="dashboard" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"></div>
         </main>
-
-        <aside class="w-96 border-l border-yellow-900 bg-zinc-950 flex flex-col shrink-0">
-            <div class="p-2 border-b border-zinc-800 text-red-500 font-bold uppercase bg-black">🛡️ 巨鯨即時動態</div>
+        <aside class="w-80 border-l border-yellow-900 bg-zinc-950 flex flex-col shrink-0">
+            <div class="p-2 border-b border-zinc-800 text-red-500 font-bold uppercase">🛡️ 巨鯨動態日誌</div>
             <div id="logBox" class="flex-1 overflow-y-auto p-2 space-y-1 font-mono text-[9px]"></div>
         </aside>
     </div>
@@ -77,76 +52,17 @@
     let FILTER = { SQZ: 0.012, POC: 0.011, SLP: -0.15, DRV: 90, MOM: 0.008 };
     let searchFilter = "";
 
-    document.getElementById('searchInput').oninput = (e) => { searchFilter = e.target.value.toUpperCase(); renderUI(); };
-
-    function togglePin(s) {
-        if (pinnedSymbols.has(s)) pinnedSymbols.delete(s);
-        else pinnedSymbols.add(s);
-        renderUI();
-    }
-
-    // 常駐數據初始化：一旦幣對出現在清單，立刻建立 WebSocket
-    function setupConstantMonitoring(symbol) {
-        if (activeMonitors.has(symbol)) return;
-
-        const ws = new WebSocket(`wss://fstream.binance.com/ws/${symbol.toLowerCase()}@aggTrade/${symbol.toLowerCase()}@forceOrder`);
-        
-        ws.onmessage = (e) => {
-            const d = JSON.parse(e.data);
-            if (!stats[symbol]) return;
-
-            // 1. 常駐爆倉價與價值累計
-            if (d.e === "forceOrder") {
-                const val = parseFloat(d.o.q) * parseFloat(d.o.p);
-                stats[symbol].liqPrice = d.o.p;
-                stats[symbol].liqTotal = (stats[symbol].liqTotal || 0) + val;
-                if (val > 10000) addLog(`💀 [清算] ${symbol} | $${(val/1000).toFixed(1)}K @ $${d.o.p}`, "sell-border");
-            }
-
-            // 2. 常駐成交大單統計
-            if (d.e === "aggTrade") {
-                const val = parseFloat(d.q) * parseFloat(d.p);
-                const isBuy = !d.m;
-                
-                // 統計 5萬以上的大單次數
-                if (val >= 50000) {
-                    stats[symbol].bigOrderCount = (stats[symbol].bigOrderCount || 0) + 1;
-                    if (val >= 100000) {
-                        stats[symbol].lastFlow = Date.now(); // 瞬間資金標記
-                        addLog(`🐋 [${isBuy?'買入':'賣出'}] ${symbol} | $${(val/1000).toFixed(1)}K`, isBuy?'buy-border':'sell-border');
-                    }
-                }
-            }
-        };
-
-        // 3. 常駐掛單牆掃描 (每 10 秒)
-        const fetchDepth = async () => {
-            try {
-                const res = await fetch(`https://fapi.binance.com/fapi/v1/depth?symbol=${symbol}&limit=20`);
-                const depth = await res.json();
-                const all = [...depth.asks, ...depth.bids].sort((a,b) => (b[0]*b[1]) - (a[0]*a[1]));
-                if(stats[symbol]) {
-                    stats[symbol].wallPrice = all[0][0];
-                    stats[symbol].wallValue = all[0][0] * all[0][1];
-                }
-            } catch(e){}
-        };
-        const timer = setInterval(fetchDepth, 10000);
-        fetchDepth();
-
-        activeMonitors.set(symbol, { ws, timer });
-    }
-
+    // 封包 A: 輕量掃描 (REST API)
     async function coreScan() {
         if(!isRunning) return;
         try {
             const res = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
+            if (res.status === 418) { addLog("⚠️ 觸發幣安流量限制，暫緩掃描..."); return; }
             const data = await res.json();
             data.forEach(t => {
                 const s = t.symbol;
                 if (!s.endsWith('USDT')) return;
                 
-                // 計算評分
                 const price = parseFloat(t.lastPrice);
                 const avgPrice = parseFloat(t.weightedAvgPrice);
                 const maSqz = (parseFloat(t.highPrice) - parseFloat(t.lowPrice)) / avgPrice;
@@ -158,15 +74,61 @@
                 if (drvScore >= FILTER.DRV) score += 35;
                 if (parseFloat(t.priceChangePercent) > 0) score += 10;
 
-                if (!stats[s]) {
-                    stats[s] = { s, score: 0, wallPrice: 0, wallValue: 0, liqPrice: 0, liqTotal: 0, bigOrderCount: 0, lastFlow: 0 };
-                    setupConstantMonitoring(s); // 初始化常駐監控
-                }
+                if (!stats[s]) stats[s] = { s, score, price, wallPrice:0, wallValue:0, liqPrice:0, liqTotal:0, bigOrderCount:0, lastFlow:0 };
                 stats[s] = { ...stats[s], price, score };
             });
             renderUI();
         } catch (e) { console.error(e); }
         setTimeout(coreScan, 3000);
+    }
+
+    // 封包 B: 深度數據連線 (僅針對畫面上顯示的卡片)
+    function startDeepMonitor(symbol) {
+        if (activeMonitors.has(symbol)) return;
+
+        const ws = new WebSocket(`wss://fstream.binance.com/ws/${symbol.toLowerCase()}@aggTrade/${symbol.toLowerCase()}@forceOrder`);
+        ws.onmessage = (e) => {
+            const d = JSON.parse(e.data);
+            if (!stats[symbol]) return;
+            if (d.e === "forceOrder") {
+                const val = parseFloat(d.o.q) * parseFloat(d.o.p);
+                stats[symbol].liqPrice = d.o.p;
+                stats[symbol].liqTotal += val;
+                addLog(`💀 [爆倉] ${symbol} $${(val/1000).toFixed(1)}K`, "text-red-500");
+            }
+            if (d.e === "aggTrade") {
+                const val = parseFloat(d.q) * parseFloat(d.p);
+                if (val >= 50000) {
+                    stats[symbol].bigOrderCount++;
+                    if (val >= 100000) stats[symbol].lastFlow = Date.now();
+                    addLog(`🐋 [大單] ${symbol} $${(val/1000).toFixed(1)}K`, "text-green-400");
+                }
+            }
+        };
+
+        const fetchWall = async () => {
+            if (!activeMonitors.has(symbol)) return;
+            try {
+                const r = await fetch(`https://fapi.binance.com/fapi/v1/depth?symbol=${symbol}&limit=10`);
+                const d = await r.json();
+                const all = [...d.asks, ...d.bids].sort((a,b) => (b[0]*b[1]) - (a[0]*a[1]));
+                stats[symbol].wallPrice = all[0][0];
+                stats[symbol].wallValue = all[0][0] * all[0][1];
+            } catch(e){}
+        };
+        const wallTimer = setInterval(fetchWall, 5000);
+        fetchWall();
+
+        activeMonitors.set(symbol, { ws, wallTimer });
+    }
+
+    function stopDeepMonitor(symbol) {
+        const m = activeMonitors.get(symbol);
+        if (m) {
+            m.ws.close();
+            clearInterval(m.wallTimer);
+            activeMonitors.delete(symbol);
+        }
     }
 
     function renderUI() {
@@ -175,45 +137,49 @@
         if (searchFilter) list = list.filter(x => x.s.includes(searchFilter));
         list.sort((a, b) => (pinnedSymbols.has(b.s)?1:0) - (pinnedSymbols.has(a.s)?1:0) || b.score - a.score);
 
-        dashboard.innerHTML = list.slice(0, 24).map(x => {
-            const isPinned = pinnedSymbols.has(x.s);
-            const isFlowing = (Date.now() - x.lastFlow) < 2000; // 2秒內有大單視為 Flow
+        dashboard.innerHTML = list.slice(0, 40).map(x => {
+            const isFlowing = (Date.now() - x.lastFlow) < 2000;
             const wallStr = x.wallValue >= 1000000 ? (x.wallValue/1000000).toFixed(1)+'M' : (x.wallValue/1000).toFixed(0)+'K';
-            const liqStr = x.liqTotal >= 1000 ? (x.liqTotal/1000).toFixed(1)+'K' : '0';
-
             return `
-                <div class="card p-3 ${isPinned?'pinned':''} ${isFlowing?'flow-alert':''}" onclick="togglePin('${x.s}')">
-                    <div class="flex justify-between items-center">
-                        <span class="text-lg font-black text-white">${x.s.replace('USDT','')} ${isPinned?'📌':''}</span>
-                        <span class="${isFlowing?'text-red-500 animate-pulse':'text-zinc-700'} font-black text-[9px]">${isFlowing?'🔥 FLOW':'STEADY'}</span>
+                <div class="card p-3 ${pinnedSymbols.has(x.s)?'pinned':''} ${isFlowing?'flow-alert':''}" 
+                     data-symbol="${x.s}" onclick="togglePin('${x.s}')">
+                    <div class="flex justify-between font-black">
+                        <span class="text-lg text-white">${x.s.replace('USDT','')}</span>
+                        <span class="text-yellow-500 italic">★ ${x.score.toFixed(0)}</span>
                     </div>
-                    <div class="text-2xl font-black text-white mb-1">$${x.price.toLocaleString()}</div>
-                    
-                    <div class="grid grid-cols-2 gap-1 mb-2">
+                    <div class="text-2xl font-black text-white">$${x.price.toLocaleString()}</div>
+                    <div class="grid grid-cols-2 gap-1 mt-2">
                         <div class="metric-box">
-                            <span class="text-zinc-600 block text-[7px] uppercase">最大牆價($)</span>
+                            <span class="text-zinc-500 block text-[7px] uppercase">最大牆價</span>
                             <span class="text-blue-400 font-bold">$${parseFloat(x.wallPrice).toFixed(3)}</span>
                         </div>
                         <div class="metric-box">
-                            <span class="text-zinc-600 block text-[7px] uppercase">牆總額($)</span>
+                            <span class="text-zinc-500 block text-[7px] uppercase">牆總額</span>
                             <span class="text-blue-300 font-bold">${wallStr}</span>
                         </div>
                         <div class="metric-box">
-                            <span class="text-zinc-600 block text-[7px] uppercase">累計爆倉($)</span>
-                            <span class="text-red-500 font-bold">${liqStr}</span>
+                            <span class="text-zinc-500 block text-[7px] uppercase">累計爆倉</span>
+                            <span class="text-red-500 font-bold">$${(x.liqTotal/1000).toFixed(1)}K</span>
                         </div>
                         <div class="metric-box">
-                            <span class="text-zinc-600 block text-[7px] uppercase">成交大單數</span>
+                            <span class="text-zinc-500 block text-[7px] uppercase">大單數</span>
                             <span class="text-green-400 font-bold">${x.bigOrderCount}</span>
                         </div>
-                    </div>
-                    <div class="flex justify-between text-[8px] font-bold text-zinc-500 uppercase">
-                        <span>Score: ${x.score.toFixed(0)}</span>
-                        <span class="text-yellow-600">Wall Locate: ${x.wallPrice > x.price ? 'ASK':'BID'}</span>
                     </div>
                 </div>
             `;
         }).join('');
+
+        // 觀察者：只對畫面上看到的幣開啟連線
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                const symbol = entry.target.getAttribute('data-symbol');
+                if (entry.isIntersecting) startDeepMonitor(symbol);
+                else stopDeepMonitor(symbol);
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('.card').forEach(card => observer.observe(card));
     }
 
     function addLog(msg, customClass = "") {
@@ -231,18 +197,15 @@
         if(isRunning) coreScan();
     }
 
-    function setupSliders() {
-        const binds = [{id:'i_sqz',vid:'v_sqz',key:'SQZ',div:1000},{id:'i_poc',vid:'v_poc',key:'POC',div:1000},{id:'i_slp',vid:'v_slp',key:'SLP',div:100},{id:'i_drv',vid:'v_drv',key:'DRV',div:1},{id:'i_mom',vid:'v_mom',key:'MOM',div:1000}];
-        binds.forEach(b => {
-            const el = document.getElementById(b.id);
-            if(el) el.oninput = (e) => {
-                let v = parseFloat(e.target.value);
-                FILTER[b.key] = (b.key === 'SLP' ? -(v/100) : v / b.div);
-                document.getElementById(b.vid).innerText = (b.key === 'SLP' ? '-' : '') + (b.key === 'DRV' ? v : (v/10).toFixed(1)) + (b.key === 'DRV' ? '' : '%');
-            };
-        });
-    }
-    setupSliders();
+    // 重新校對滑桿綁定
+    const binds = [{id:'i_sqz',vid:'v_sqz',key:'SQZ',div:1000},{id:'i_poc',vid:'v_poc',key:'POC',div:1000},{id:'i_slp',vid:'v_slp',key:'SLP',div:100},{id:'i_drv',vid:'v_drv',key:'DRV',div:1},{id:'i_mom',vid:'v_mom',key:'MOM',div:1000}];
+    binds.forEach(b => {
+        document.getElementById(b.id).oninput = (e) => {
+            let v = parseFloat(e.target.value);
+            FILTER[b.key] = (b.key === 'SLP' ? -(v/100) : v / b.div);
+            document.getElementById(b.vid).innerText = (b.key === 'SLP' ? '-' : '') + (b.key === 'DRV' ? v : (v/10).toFixed(1)) + (b.key === 'DRV' ? '' : '%');
+        };
+    });
 </script>
 </body>
 </html>
