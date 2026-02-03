@@ -3,8 +3,9 @@ import pandas as pd
 import time
 from datetime import datetime
 from binance.client import Client
+from binance.exceptions import BinanceAPIException
 
-# --- [A] 專業 Sniper 視覺配置 (對齊 image_a96d94.png) ---
+# --- [A] 專業 Sniper 視覺配置 ---
 st.set_page_config(page_title="SNIPER WHALE V1.5", layout="wide")
 st.markdown("""
     <style>
@@ -13,10 +14,9 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- [B] 側邊欄控制：搜尋與 API 配置 (對齊 image_a96d94.png / image_a96db7.png) ---
+# --- [B] 側邊欄控制 ---
 with st.sidebar:
     st.title("⚡ SNIPER RADAR")
-    # P1: 搜尋功能 - 這裡輸入幣名後，雷達會立即切換
     symbol = st.text_input("🔍 搜尋監控幣對 (如 BTCUSDT)", value="BTCUSDT").upper()
     whale_limit = st.number_input("💵 巨鯨門檻 (USDT)", value=50000)
     
@@ -25,44 +25,55 @@ with st.sidebar:
     api_secret = st.text_input("Binance API Secret", type="password")
     is_active = st.toggle("🚀 START MONITORING")
 
-# --- [C] 核心數據引擎：每 3 秒同步發送 3 個封包 (對齊 image_a96db7.png) ---
+# --- [C] 核心數據引擎 ---
 def get_whale_data(client, target):
     try:
-        # 同步請求三項數據：P2(成交)、B2(持倉)、P3(爆倉)
+        # P2: 最近成交, B2: 持倉量, P3: 爆倉單
         trades = client.futures_recent_trades(symbol=target, limit=20)
         oi = client.futures_open_interest(symbol=target)
+        # 注意：futures_get_all_liquidation_orders 耗時較長，建議給予更精確的搜尋
         liqs = client.futures_get_all_liquidation_orders(symbol=target, limit=1)
         return trades, oi, liqs
-    except:
+    except Exception as e:
+        st.error(f"API 連線錯誤: {e}")
         return None, None, None
 
-# --- [D] 執行邏輯 (對齊 image_a97064.png / image_a97099.png / image_a970b8.png) ---
+# --- [D] 執行邏輯 ---
 if is_active and api_key and api_secret:
     client = Client(api_key, api_secret)
-    dashboard = st.empty()
     
-    # 紀錄持倉歷史 (B2 變化判斷核心)
+    # 初始化 Session State
     if 'prev_oi' not in st.session_state:
         st.session_state.prev_oi = 0.0
+    
+    # 建立一個容器，用於動態刷新
+    placeholder = st.empty()
 
-    while True:
+    # --- 修正後的循環機制 ---
+    # 在 Streamlit 中，我們可以用 while 搭配 placeholder.container()
+    while is_active:
         cycle_start = time.perf_counter()
         
-        # 發送並抓取數據
         t_data, o_data, l_data = get_whale_data(client, symbol)
 
         if t_data and o_data:
             price = float(t_data[-1]['price'])
             curr_oi = float(o_data['openInterest'])
-            # B2 持倉變動計算
             oi_change = curr_oi - st.session_state.prev_oi if st.session_state.prev_oi > 0 else 0
             
-            # 【週六專屬歸屬判定】
-            is_sat = datetime.utcnow().weekday() == 5
+            # 【週六/週一高勝率策略判定】
+            now = datetime.utcnow()
+            is_sat = now.weekday() == 5
+            is_mon = now.weekday() == 0
             
-            with dashboard.container():
-                st.markdown(f"## 📊 {symbol} 實時戰報 " + ("🟢 (週六模式)" if is_sat else ""))
-                
+            with placeholder.container():
+                header_col, timer_col = st.columns([4, 1])
+                with header_col:
+                    status_tag = "🟢 (週六專屬模式)" if is_sat else ("🔵 (週一高勝率監控)" if is_mon else "⚪ (一般時段)")
+                    st.markdown(f"## 📊 {symbol} 實時戰報 {status_tag}")
+                with timer_col:
+                    st.write(f"最後更新: {now.strftime('%H:%M:%S')}")
+
                 # 儀表板區域
                 c1, c2, c3 = st.columns(3)
                 c1.metric("即時市價", f"${price:,.2f}")
@@ -81,15 +92,17 @@ if is_active and api_key and api_secret:
                     # 邏輯：買大單 + OI 增加 = 巨鯨建倉 (進貨)
                     elif not is_seller and oi_change > 0:
                         st.success(f"💎 訊號：偵測到巨鯨「底部建倉」！金額: ${vol:,.0f}")
-                
+                else:
+                    st.write("📡 市場掃描中：目前尚未發現巨鯨大單...")
+
                 # P3 爆倉預警
-                if l_data:
+                if l_data and len(l_data) > 0:
                     st.warning(f"🔥 P3 爆倉預警：觸發價 {l_data[0]['price']}")
 
             st.session_state.prev_oi = curr_oi
 
-        # 精確控制 3 秒循環
-        wait = max(0, 3.0 - (time.perf_counter() - cycle_start))
-        time.sleep(wait)
+        # 控制每 3 秒刷新一次
+        time.sleep(3)
 else:
-    st.info("💡 請在左側輸入 API 金鑰並點擊啟動。這將解決 GitHub Actions 的排隊報錯問題。")
+    st.info("💡 請在左側輸入 API 金鑰並點擊啟動。")
+    st.warning("提醒：週六數據將自動歸類至週六專屬庫，不計入其他天數。")
