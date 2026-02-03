@@ -1,164 +1,89 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <title>⚡ SNIPER V13.1 | AUTO-HUNT</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
-        body { background: #020202; color: #FFD700; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
-        .card { background: #0a0a0a; border: 1px solid #1a1a1a; transition: 0.2s; position: relative; }
-        .hunt-card { border: 2px solid #ff0000; background: #2a0000 !important; animation: pulse 0.8s infinite; }
-        .pinned { border: 2px solid #3b82f6 !important; background: #081221 !important; opacity: 1 !important; }
-        @keyframes pulse { 0% { box-shadow: 0 0 10px #ff0000; } 50% { box-shadow: 0 0 20px #ff0000; } 100% { box-shadow: 0 0 10px #ff0000; } }
-        .tag { padding: 1px 4px; border-radius: 2px; font-size: 8px; font-weight: bold; }
-        .tag-sat { background: #22c55e; color: #000; }
-        #logBox::-webkit-scrollbar { width: 4px; }
-        #logBox::-webkit-scrollbar-thumb { background: #333; }
-    </style>
-</head>
-<body class="h-screen flex flex-col text-[10px]">
+import streamlit as st
+import pandas as pd
+import time
+from datetime import datetime
+from binance.client import Client
+from binance.exceptions import BinanceAPIException
 
-    <header class="p-4 border-b border-yellow-900 bg-black flex justify-between items-center shrink-0">
-        <div class="flex items-center gap-4">
-            <h1 class="text-2xl font-black text-yellow-500 italic">⚡ SNIPER V13.1</h1>
-            <div id="modeStatus" class="bg-zinc-900 px-3 py-1 rounded text-zinc-500 font-bold border border-zinc-800 italic">掃描待命中...</div>
-        </div>
-        <div class="flex gap-4">
-            <button id="sysBtn" onclick="toggleSystem()" class="bg-blue-600 text-white px-10 py-1 rounded font-black hover:bg-blue-500 transition-all">START RADAR</button>
-        </div>
-    </header>
+# --- [A] 專業 Sniper 配置 ---
+st.set_page_config(page_title="SNIPER RADAR V13.5", layout="wide")
+st.markdown("""
+<style>
+    .main { background-color: #050505; color: #FFD700; font-family: 'JetBrains Mono', monospace; }
+    .stMetric { border: 1px solid #1a1a1a; background-color: #0a0a0a; padding: 15px; border-radius: 8px; }
+</style>
+""", unsafe_allow_html=True)
 
-    <div class="flex flex-1 overflow-hidden">
-        <main class="flex-1 p-3 overflow-y-auto bg-black">
-            <div id="dashboard" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"></div>
-        </main>
+# --- [B] 側邊欄控制 ---
+with st.sidebar:
+    st.title("⚡ SNIPER V13.5")
+    target_symbol = st.text_input("🔍 監控目標 (如 BTCUSDT)", value="BTCUSDT").upper()
+    whale_limit = st.number_input("💵 巨鯨門檻 (USDT)", value=50000)
+    st.divider()
+    api_key = st.text_input("Binance API Key", type="password")
+    api_secret = st.text_input("Binance API Secret", type="password")
+    is_active = st.toggle("🚀 START RADAR")
 
-        <aside class="w-80 border-l border-yellow-900 bg-zinc-950 flex flex-col shrink-0">
-            <div class="p-3 border-b border-zinc-800 text-red-500 font-bold uppercase">戰鬥日誌 (巨鯨/爆倉)</div>
-            <div id="logBox" class="flex-1 overflow-y-auto p-2 space-y-1 font-mono"></div>
-        </aside>
-    </div>
+# --- [C] 修正後的數據引擎 (解決 400 錯誤) ---
+def get_valid_data(client, symbol):
+    try:
+        # P2: 成交數據 (正常)
+        trades = client.futures_recent_trades(symbol=symbol, limit=20)
+        # B2: 持倉數據 (修正點：必須指定 symbol，不可用 ALL)
+        oi = client.futures_open_interest(symbol=symbol)
+        # P3: 爆倉數據
+        liqs = client.futures_get_all_liquidation_orders(symbol=symbol, limit=1)
+        return trades, oi, liqs
+    except BinanceAPIException as e:
+        st.error(f"API 請求失敗: {e.message}") # 捕捉 400 錯誤並顯示原因
+        return None, None, None
 
-<script>
-    let isRunning = false;
-    let stats = {}, pinned = new Set();
-    let prevOI = {}; 
-    const SCORE_THRESHOLD = 75; // 75分自動定選門檻
-    const WHALE_MIN = 50000; 
-
-    function checkDateMode() {
-        const day = new Date().getDay();
-        const status = document.getElementById('modeStatus');
-        if (day === 6) {
-            status.innerText = "📅 週六模式：數據專屬歸屬";
-            status.classList.replace('text-zinc-500', 'text-green-500');
-            return "SAT";
-        }
-        return "NORMAL";
-    }
-
-    async function scan() {
-        if(!isRunning) return;
-        try {
-            // 一次抓取全市場 Ticker 數據，節省 API 消耗
-            const res = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
-            const data = await res.json();
-            
-            data.forEach(t => {
-                const s = t.symbol;
-                if (!s.endsWith('USDT')) return;
-
-                const price = parseFloat(t.lastPrice);
-                const vol24h = parseFloat(t.quoteVolume);
-                const change = parseFloat(t.priceChangePercent);
-                
-                // --- 75分評分邏輯 (根據你的需求修正) ---
-                let score = 0;
-                if (Math.abs(change) > 2.5) score += 30; // 波動分
-                if (vol24h > 50000000) score += 25; // 成交量分
-                const highLowRange = (parseFloat(t.highPrice) - parseFloat(t.lowPrice)) / price;
-                if (highLowRange < 0.015) score += 20; // 蓄勢分
-                if (change > 0) score += 10; // 趨勢分
-
-                // --- B2 持倉模擬計算 (OI 變動) ---
-                const currentOI = vol24h / price; 
-                const oiDiff = prevOI[s] ? currentOI - prevOI[s] : 0;
-                prevOI[s] = currentOI;
-
-                stats[s] = { s, price, change, score, vol24h, oiDiff };
-
-                // --- [自動定選邏輯] ---
-                if (score >= SCORE_THRESHOLD && !pinned.has(s)) {
-                    pinned.add(s);
-                    addLog(s, `🎯 評分達標 ${score.toFixed(0)} 分，自動定選監控`);
-                }
-            });
-
-            render();
-        } catch (e) { console.error("API 洨出錯了:", e); }
-        if(isRunning) setTimeout(scan, 3000);
-    }
-
-    function render() {
-        const dashboard = document.getElementById('dashboard');
-        const mode = checkDateMode();
+# --- [D] 核心執行邏輯 ---
+if is_active and api_key and api_secret:
+    client = Client(api_key, api_secret)
+    if 'prev_oi' not in st.session_state: st.session_state.prev_oi = 0.0
+    
+    dashboard = st.empty()
+    
+    while is_active:
+        start_time = time.perf_counter()
+        t_data, o_data, l_data = get_valid_data(client, target_symbol)
         
-        // 過濾出 75 分以上或被定選的
-        const list = Object.values(stats)
-            .filter(x => x.score >= SCORE_THRESHOLD || pinned.has(x.s))
-            .sort((a,b) => (pinned.has(b.s) - pinned.has(a.s)) || (b.score - a.score));
-
-        dashboard.innerHTML = list.slice(0, 16).map(x => {
-            const isPinned = pinned.has(x.s);
-            const isHighAlert = x.score >= 90;
+        if t_data and o_data:
+            # 數據解析
+            price = float(t_data[-1]['price'])
+            curr_oi = float(o_data['openInterest'])
+            oi_change = curr_oi - st.session_state.prev_oi if st.session_state.prev_oi > 0 else 0
             
-            return `
-                <div class="card p-3 rounded-lg ${isHighAlert ? 'hunt-card' : ''} ${isPinned ? 'pinned' : ''}" onclick="togglePin('${x.s}')">
-                    <div class="flex justify-between items-center mb-2">
-                        <div class="flex gap-1">
-                            ${mode === 'SAT' ? '<span class="tag tag-sat">SAT</span>' : ''}
-                            <span class="bg-zinc-800 text-white px-1 rounded">SCORE: ${x.score.toFixed(0)}</span>
-                        </div>
-                        <span class="${x.oiDiff >= 0 ? 'text-green-500' : 'text-red-500'} font-bold">B2: ${x.oiDiff > 0 ? '▲' : '▼'}</span>
-                    </div>
-                    <div class="flex justify-between items-end">
-                        <h2 class="text-2xl font-black text-white">${x.s.replace('USDT','')}</h2>
-                        <div class="text-right">
-                            <div class="text-lg font-bold ${x.change >= 0 ? 'text-green-500' : 'text-red-500'}">${x.change}%</div>
-                            <div class="text-zinc-500 font-mono">$${x.price.toLocaleString()}</div>
-                        </div>
-                    </div>
-                    <div class="mt-2 pt-2 border-t border-zinc-900 flex justify-between text-[8px] text-zinc-500 font-bold">
-                        <span>VOL: ${(x.vol24h/1000000).toFixed(1)}M</span>
-                        <span class="${isHighAlert ? 'text-red-500 animate-bounce' : ''}">${isHighAlert ? '🚨 巨鯨異動' : '監控中'}</span>
-                    </div>
-                    ${isPinned ? '<div class="absolute -top-1 -right-1">📌</div>' : ''}
-                </div>
-            `;
-        }).join('');
-    }
+            # 週六/週一判定
+            now = datetime.utcnow()
+            is_sat = now.weekday() == 5
+            is_mon = now.weekday() == 0
+            status_tag = "🟢 (週六專屬)" if is_sat else ("🔵 (週一高勝率)" if is_mon else "⚪ (一般監控)")
 
-    function addLog(s, msg) {
-        const logBox = document.getElementById('logBox');
-        const div = document.createElement('div');
-        div.className = "p-2 bg-zinc-900 border-l-2 border-blue-500 mb-1 text-zinc-400";
-        div.innerHTML = `<span class="text-zinc-600">[${new Date().toLocaleTimeString()}]</span> <b>${s}</b>: ${msg}`;
-        logBox.prepend(div);
-    }
+            with dashboard.container():
+                st.subheader(f"📊 {target_symbol} 戰報 {status_tag}")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("即時市價", f"${price:,.2f}")
+                c2.metric("持倉變動 (B2)", f"{curr_oi:,.0f}", f"{oi_change:,.2f}")
+                
+                vol = price * float(t_data[-1]['qty'])
+                c3.metric("最新成交 (P2)", f"${vol:,.0f}")
+                
+                # 🐳 巨鯨判定
+                if vol >= whale_limit:
+                    if t_data[-1]['isBuyerMaker'] and oi_change < 0:
+                        st.error(f"🚨 巨鯨平倉出貨！金額: ${vol:,.0f}")
+                    elif not t_data[-1]['isBuyerMaker'] and oi_change > 0:
+                        st.success(f"💎 巨鯨底部建倉！金額: ${vol:,.0f}")
+                
+                if is_sat:
+                    st.warning("⚠️ 提醒：週六數據獨立歸屬，不與週日混用。")
 
-    function toggleSystem() {
-        isRunning = !isRunning;
-        const btn = document.getElementById('sysBtn');
-        btn.innerText = isRunning ? "STOP RADAR" : "START RADAR";
-        btn.className = isRunning ? "bg-red-600 text-white px-10 py-1 rounded font-black" : "bg-blue-600 text-white px-10 py-1 rounded font-black";
-        if(isRunning) scan();
-    }
-
-    function togglePin(s) {
-        pinned.has(s) ? pinned.delete(s) : pinned.add(s);
-        render();
-    }
-</script>
-</body>
-</html>
+            st.session_state.prev_oi = curr_oi
+            
+        # 精確 3 秒循環，防止 GitHub Actions 資源競爭
+        wait = max(0, 3.0 - (time.perf_counter() - start_time))
+        time.sleep(wait)
+else:
+    st.info("💡 請配置 API Key 並啟動監控。修正後的代碼已移除 'symbol=ALL' 以解決 400 報錯。")
