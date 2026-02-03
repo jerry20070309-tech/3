@@ -2,39 +2,41 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ SNIPER V19.0 | 零報錯全要素版</title>
+    <title>⚡ SNIPER V20.0 | 軍事級全要素監控</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
-        body { background: #000; color: #FFD700; font-family: 'JetBrains Mono', monospace; overflow: hidden; letter-spacing: -0.5px; }
-        .card { background: #050505; border: 1px solid #1a1a1a; border-radius: 4px; padding: 10px; position: relative; }
-        .monster-boost { border: 2px solid #ef4444 !important; background: linear-gradient(180deg, #1a0505 0%, #000 100%); }
-        .surge-flash { animation: surge 0.4s ease-out; }
-        @keyframes surge { from { background: #1e3a8a; } to { background: #050505; } }
-        .log-line { border-bottom: 1px solid #111; padding: 2px 0; display: flex; justify-content: space-between; }
-        .btn-start { background: #eab308; color: #000; padding: 8px 16px; font-weight: 900; border-radius: 4px; cursor: pointer; }
-        .btn-stop { background: #ef4444; color: #fff; padding: 8px 16px; font-weight: 900; border-radius: 4px; cursor: pointer; }
+        body { background: #000; color: #FFD700; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
+        .card { background: #0a0a0a; border: 1px solid #222; border-radius: 4px; padding: 10px; position: relative; }
+        .monster-boost { border: 2px solid #ef4444 !important; background: linear-gradient(180deg, #200, #000); }
+        .log-row { display: flex; justify-content: space-between; border-bottom: 1px solid #1a1a1a; padding: 1px 0; font-size: 8px; }
+        .btn-active { background: #eab308; color: #000; padding: 8px 20px; font-weight: 900; border-radius: 4px; cursor: pointer; }
+        .btn-stop { background: #ef4444; color: #fff; padding: 8px 20px; font-weight: 900; border-radius: 4px; cursor: pointer; }
+        .bar-wrap { background: #111; height: 3px; border-radius: 2px; margin-top: 4px; overflow: hidden; }
+        .bar-fill { background: #2563eb; height: 100%; transition: 0.4s; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #333; }
     </style>
 </head>
 <body class="h-screen flex flex-col p-2 text-[9px]">
 
     <header class="p-2 border-b border-yellow-900/30 flex justify-between items-center bg-black">
         <div class="flex items-center gap-4">
-            <h1 class="text-xl font-black text-yellow-500 italic">⚡ SNIPER V19.0</h1>
-            <div id="strategyMode" class="bg-blue-900/20 text-blue-500 px-2 py-1 rounded font-bold border border-blue-800/50 uppercase">待機</div>
+            <h1 class="text-xl font-black text-yellow-500 italic">⚡ SNIPER V20.0</h1>
+            <div id="strategyLabel" class="text-blue-500 font-bold px-2 py-0.5 border border-blue-900 rounded uppercase">待命</div>
         </div>
-        <div class="flex gap-4">
-            <button id="switchBtn" onclick="toggleSystem()" class="btn-start">ACTIVATE</button>
-            <div id="apiStatus" class="bg-zinc-900 px-3 py-1 rounded text-zinc-600 font-black border border-zinc-800 uppercase text-[8px] flex items-center">Offline</div>
+        <div class="flex gap-2">
+            <button id="switchBtn" onclick="toggleSystem()" class="btn-active">ACTIVATE</button>
+            <div id="apiStatus" class="bg-zinc-900 px-3 py-1 rounded text-zinc-600 font-black border border-zinc-800 uppercase">OFFLINE</div>
         </div>
     </header>
 
-    <div class="bg-zinc-900/20 p-2 grid grid-cols-5 gap-4 border-b border-yellow-900/10 uppercase font-bold text-zinc-500">
-        <div>🌀 SQZ橫盤 <span id="v_sqz" class="text-yellow-500">1.2%</span><input type="range" id="i_sqz" min="5" max="50" value="12" class="w-full accent-yellow-500"></div>
-        <div>🎯 POC突破 <span id="v_poc" class="text-green-500">1.1%</span><input type="range" id="i_poc" min="5" max="50" value="11" class="w-full accent-green-500"></div>
-        <div>🚨 SLP乖離 <span id="v_slp" class="text-red-500">1.5%</span><input type="range" id="i_slp" min="5" max="50" value="15" class="w-full accent-red-500"></div>
-        <div>🚀 DRV真空 <span id="v_drv" class="text-blue-500">90</span><input type="range" id="i_drv" min="10" max="150" value="90" class="w-full accent-blue-500"></div>
-        <div>⚡ MOM均線 <span id="v_mom" class="text-orange-500">0.8%</span><input type="range" id="i_mom" min="1" max="50" value="8" class="w-full accent-orange-500"></div>
+    <div class="bg-zinc-900/20 p-2 grid grid-cols-5 gap-4 border-b border-yellow-900/10 uppercase font-bold text-zinc-600">
+        <div>🌀 SQZ 橫盤 <span id="v_sqz" class="text-yellow-500">1.2%</span><input type="range" id="i_sqz" min="5" max="50" value="12" class="w-full accent-yellow-500"></div>
+        <div>🎯 POC 突破 <span id="v_poc" class="text-green-500">1.1%</span><input type="range" id="i_poc" min="5" max="50" value="11" class="w-full accent-green-500"></div>
+        <div>🚨 SLP 乖離 <span id="v_slp" class="text-red-500">1.5%</span><input type="range" id="i_slp" min="5" max="50" value="15" class="w-full accent-red-500"></div>
+        <div>🚀 DRV 真空 <span id="v_drv" class="text-blue-500">90</span><input type="range" id="i_drv" min="10" max="150" value="90" class="w-full accent-blue-500"></div>
+        <div>⚡ MOM 動量 <span id="v_mom" class="text-orange-500">0.8%</span><input type="range" id="i_mom" min="1" max="50" value="8" class="w-full accent-orange-500"></div>
     </div>
 
     <main id="dashboard" class="flex-1 overflow-y-auto grid grid-cols-4 gap-2 mt-2 p-1 content-start"></main>
@@ -42,57 +44,56 @@
 <script>
     let isRunning = false, stats = {}, activeWS = new Map();
     let FILTER = { SQZ: 0.012, POC: 0.011, SLP: 0.015, DRV: 90, MOM: 0.008 };
-    let sequence = 0;
+    let loopIdx = 0;
 
     function toggleSystem() {
         isRunning = !isRunning;
-        const btn = document.getElementById('switchBtn');
-        btn.innerText = isRunning ? "STOP" : "ACTIVATE";
-        btn.className = isRunning ? "btn-stop" : "btn-start";
-        document.getElementById('apiStatus').innerText = isRunning ? "Safe Pulse: 3s" : "Offline";
-        if (isRunning) masterLoop();
+        document.getElementById('switchBtn').innerText = isRunning ? "STOP" : "ACTIVATE";
+        document.getElementById('switchBtn').className = isRunning ? "btn-stop" : "btn-active";
+        document.getElementById('apiStatus').innerText = isRunning ? "Strict 3s" : "Offline";
+        if (isRunning) coreLoop();
     }
 
-    // [A] 絕對隊列控制：一次只發一個請求，絕不並行
-    async function masterLoop() {
+    async function coreLoop() {
         if (!isRunning) return;
         try {
-            if (sequence === 0) {
+            if (loopIdx === 0) {
                 const r = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
                 const data = await r.json();
                 data.forEach(t => {
                     if (!t.symbol.endsWith('USDT')) return;
-                    const s = t.symbol, p = parseFloat(t.lastPrice), h = parseFloat(t.highPrice), l = parseFloat(t.lowPrice);
-                    let sc = ((h-l)/p <= FILTER.SQZ) ? 50 : 0;
-                    if (!stats[s]) stats[s] = { s, score:0, price:p, funding:0, wallP:0, wallV:0, liqP:0, liqV:0, buyV:0, sellV:0, logs:[], vol:0, flash:false };
-                    stats[s] = { ...stats[s], price:p, score:sc, vol:parseFloat(t.quoteVolume) };
-                    setupWS(s);
+                    const s = t.symbol, p = parseFloat(t.lastPrice);
+                    let sc = ((parseFloat(t.highPrice)-parseFloat(t.lowPrice))/p <= FILTER.SQZ) ? 50 : 0;
+                    if (!stats[s]) stats[s] = { s, score:0, price:p, funding:0, wallP:0, wallV:0, liqP:0, liqV:0, buyV:0, sellV:0, trades:[], vol:0 };
+                    stats[s].price = p; stats[s].score = sc; stats[s].vol = parseFloat(t.quoteVolume);
+                    if (isRunning && !activeWS.has(s)) setupWS(s);
                 });
-                sequence = 1;
-            } else if (sequence === 1) {
+                loopIdx = 1;
+            } else if (loopIdx === 1) {
                 const r = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex');
                 const data = await r.json();
                 data.forEach(p => { if(stats[p.symbol]) stats[p.symbol].funding = p.lastFundingRate; });
-                sequence = 2;
+                loopIdx = 2;
             } else {
-                const top = Object.values(stats).sort((a,b)=>b.score-a.score).slice(0, 8);
-                for (const item of top) { // 這裡用 for 循環而非 forEach，保證序列化
-                    const r = await fetch(`https://fapi.binance.com/fapi/v1/depth?symbol=${item.s}&limit=5`);
+                // 補齊「最大掛單價/價值」
+                const topTargets = Object.values(stats).sort((a,b)=>b.score-a.score).slice(0, 10);
+                for (const target of topTargets) {
+                    const r = await fetch(`https://fapi.binance.com/fapi/v1/depth?symbol=${target.s}&limit=5`);
                     const d = await r.json();
                     if(d.asks && d.asks[0]) {
-                        stats[item.s].wallP = d.asks[0][0];
-                        stats[item.s].wallV = (parseFloat(d.asks[0][0]) * parseFloat(d.asks[0][1])).toFixed(0);
+                        stats[target.s].wallP = d.asks[0][0];
+                        stats[target.s].wallV = (parseFloat(d.asks[0][0]) * parseFloat(d.asks[0][1]));
                     }
                 }
-                sequence = 0;
+                loopIdx = 0;
             }
             render();
-        } catch (e) { console.warn("API Queue cooling down..."); }
-        setTimeout(masterLoop, 3000);
+        } catch (e) { console.warn("API Skip - Cooling..."); }
+        setTimeout(coreLoop, 3000);
     }
 
     function setupWS(s) {
-        if (activeWS.has(s) || activeWS.size > 50) return;
+        if (activeWS.has(s) || activeWS.size > 60) return;
         const ws = new WebSocket(`wss://fstream.binance.com/ws/${s.toLowerCase()}@aggTrade/${s.toLowerCase()}@forceOrder`);
         ws.onmessage = (e) => {
             const d = JSON.parse(e.data);
@@ -101,13 +102,12 @@
                 if (val > stats[s].liqV) { stats[s].liqV = val; stats[s].liqP = d.o.p; }
             }
             if (d.e === "aggTrade") {
-                const usd = parseFloat(d.q) * parseFloat(d.p);
-                if (usd > 50000) {
+                const val = parseFloat(d.q) * parseFloat(d.p);
+                if (val > 50000) {
                     const side = d.m ? "SELL" : "BUY";
-                    if (side === "BUY") stats[s].buyV += usd; else stats[s].sellV += usd;
-                    if (usd > 200000) { stats[s].flash = true; setTimeout(()=>stats[s].flash=false, 500); }
-                    stats[s].logs.unshift({ t: new Date().toLocaleTimeString().slice(3), p: d.p, v: (usd/1000).toFixed(1), s: side });
-                    if (stats[s].logs.length > 4) stats[s].logs.pop();
+                    if (side === "BUY") stats[s].buyV += val; else stats[s].sellV += val;
+                    stats[s].trades.unshift({ t: new Date().toLocaleTimeString().slice(3), p: d.p, v: (val/1000).toFixed(1), s: side });
+                    if (stats[s].trades.length > 5) stats[s].trades.pop();
                 }
             }
         };
@@ -116,40 +116,36 @@
 
     function render() {
         const board = document.getElementById('dashboard');
-        const sorted = Object.values(stats).sort((a,b) => b.score - a.score).slice(0, 24);
-        board.innerHTML = sorted.map(x => `
-            <div class="card ${x.score >= 50 ? 'border-yellow-600 bg-yellow-950/5' : ''} ${x.vol > 1e9 ? 'monster-boost' : ''} ${x.flash ? 'surge-flash' : ''}">
-                <div class="flex justify-between font-black border-b border-zinc-900 pb-1">
-                    <span class="text-white text-[11px]">${x.s}</span>
-                    <span class="text-yellow-500">★${x.score}</span>
+        const list = Object.values(stats).sort((a,b) => b.score - a.score).slice(0, 24);
+        board.innerHTML = list.map(x => `
+            <div class="card ${x.score >= 50 ? 'border-yellow-600' : ''} ${x.vol > 1e9 ? 'monster-boost' : ''}">
+                <div class="flex justify-between font-black mb-1">
+                    <span class="text-white text-xs">${x.s}</span>
+                    <span class="text-yellow-500 text-xs">★${x.score}</span>
                 </div>
+                <div class="text-2xl font-black text-white italic tracking-tighter mb-2">$${x.price}</div>
                 
-                <div class="py-2 text-2xl font-black text-white tracking-tighter italic">$${x.price}</div>
-
-                <div class="grid grid-cols-2 gap-2 text-[7px] font-bold uppercase mb-2">
-                    <div class="text-blue-400">🔥 MAX WALL<br>$${parseFloat(x.wallP).toFixed(4)}<br><span class="text-zinc-500">VAL: $${(x.wallV/1000).toFixed(1)}K</span></div>
-                    <div class="text-red-500 text-right">💀 MAX LIQ<br>$${parseFloat(x.liqP).toFixed(4)}<br><span class="text-zinc-500">VAL: $${(x.liqV/1000).toFixed(1)}K</span></div>
+                <div class="grid grid-cols-2 gap-2 text-[7px] font-bold border-y border-zinc-900 py-1 mb-2 uppercase">
+                    <div class="text-blue-400">🔥 MAX WALL<br>$${parseFloat(x.wallP).toFixed(4)}<br><span class="text-zinc-600">$${(x.wallV/1000).toFixed(1)}K</span></div>
+                    <div class="text-red-500 text-right">💀 MAX LIQ<br>$${parseFloat(x.liqP).toFixed(4)}<br><span class="text-zinc-600">$${(x.liqV/1000).toFixed(1)}K</span></div>
                 </div>
 
-                <div class="bg-black/50 rounded p-1 space-y-0.5 border border-zinc-900 mb-2">
-                    ${x.logs.map(l => `<div class="log-line ${l.s==='BUY'?'text-green-500':'text-orange-500'}"><span>${l.t}</span><span>$${parseFloat(l.p).toFixed(3)}</span><span>$${l.v}K</span></div>`).join('')}
+                <div class="bg-black rounded p-1 mb-2">
+                    ${x.trades.map(t => `<div class="log-row ${t.s==='BUY'?'text-green-500':'text-orange-500'}"><span>${t.t}</span><span>$${parseFloat(t.p).toFixed(3)}</span><span>$${t.v}K</span></div>`).join('')}
                 </div>
 
-                <div class="flex justify-between text-[8px] font-bold">
-                    <span class="${x.funding < 0 ? 'text-red-500' : 'text-green-400'}">F: ${(x.funding*100).toFixed(4)}%</span>
-                    <span class="text-blue-500">NET: $${((x.buyV - x.sellV)/1000).toFixed(0)}K</span>
+                <div class="flex justify-between items-center text-[8px] font-bold">
+                    <span class="${x.funding < 0 ? 'text-red-500' : 'text-green-500'}">F: ${(x.funding*100).toFixed(4)}%</span>
+                    <span class="text-blue-500 uppercase">Net: $${((x.buyV - x.sellV)/1000).toFixed(0)}K</span>
                 </div>
-                <div class="w-full bg-zinc-900 h-1 mt-1 rounded-full overflow-hidden">
-                    <div class="bg-blue-600 h-full" style="width: ${(x.buyV/(x.buyV+x.sellV)*100)||50}%"></div>
-                </div>
+                <div class="bar-wrap"><div class="bar-fill" style="width: ${(x.buyV/(x.buyV+x.sellV)*100)||50}%"></div></div>
             </div>
         `).join('');
     }
 
-    // [H] 週六歸屬與參數
     const day = new Date().getDay();
     if (day === 6) { 
-        document.getElementById('strategyMode').innerText = "週六高勝率模式"; 
+        document.getElementById('strategyLabel').innerText = "SATURDAY MODE"; 
         FILTER.SQZ = 0.008; 
     }
 
@@ -158,7 +154,6 @@
             const k = id.split('_')[1].toUpperCase();
             FILTER[k] = parseFloat(e.target.value)/1000;
             document.getElementById('v_'+id.split('_')[1]).innerText = (e.target.value/10).toFixed(1) + '%';
-            render();
         };
     });
 </script>
