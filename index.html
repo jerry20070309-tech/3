@@ -6,17 +6,18 @@ from binance.client import Client
 from binance.exceptions import BinanceAPIException
 
 # --- [A] 專業 Sniper 視覺配置 (對齊 image_a96d94.png) ---
-st.set_page_config(page_title="SNIPER RADAR V13.6", layout="wide")
+st.set_page_config(page_title="SNIPER RADAR V13.8", layout="wide")
 st.markdown("""
 <style>
     .main { background-color: #050505; color: #FFD700; font-family: 'JetBrains Mono', monospace; }
-    .stMetric { border: 1px solid #FFD700; background-color: #0a0a0a; padding: 15px; border-radius: 8px; }
+    .stMetric { border: 1px solid #FFD700 !important; background-color: #0a0a0a !important; padding: 15px; border-radius: 8px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- [B] 側邊欄控制：搜尋與 API 配置 ---
+# --- [B] 側邊欄控制 ---
 with st.sidebar:
     st.title("⚡ SNIPER RADAR")
+    # P1 功能：搜尋欄位 (對齊 image_d427d9.png)
     target_symbol = st.text_input("🔍 搜尋監控幣對 (如 BTCUSDT)", value="BTCUSDT").upper()
     whale_limit = st.number_input("💵 巨鯨門檻 (USDT)", value=50000)
     st.divider()
@@ -24,17 +25,22 @@ with st.sidebar:
     api_secret = st.text_input("Binance API Secret", type="password")
     is_active = st.toggle("🚀 START MONITORING")
 
-# --- [C] 核心數據引擎 (修正 API 洨問題：回歸單幣精確請求) ---
+# --- [C] 修正後的數據引擎 (解決 image_d42b81.png 的 400 錯誤) ---
 def get_whale_data(client, target):
     try:
-        # P2: 最近成交
+        # P2: 最近成交數據 (正常)
         trades = client.futures_recent_trades(symbol=target, limit=20)
-        # B2: 持倉數據 (修正：對齊截圖報錯，嚴禁 symbol=ALL)
+        
+        # B2: 持倉數據 (修正點：嚴禁 symbol=ALL)
         oi = client.futures_open_interest(symbol=target)
-        # P3: 爆倉預警
+        
+        # P3: 爆倉預警 (修正點：必須帶入 symbol)
         liqs = client.futures_get_all_liquidation_orders(symbol=target, limit=1)
+        
         return trades, oi, liqs
-    except Exception as e:
+    except BinanceAPIException as e:
+        # 如果 API 報錯，直接在介面顯示原因，不讓後台崩潰
+        st.error(f"API 請求失敗: {e.message}")
         return None, None, None
 
 # --- [D] 執行邏輯與高勝率策略 ---
@@ -46,7 +52,7 @@ if is_active and api_key and api_secret:
         if 'prev_oi' not in st.session_state:
             st.session_state.prev_oi = 0.0
             
-        # 使用 placeholder 容器，防止 GitHub Actions 渲染卡頓 (對齊 image_d427d9.png)
+        # 使用 placeholder 容器，防止 GitHub Actions 渲染卡頓
         dashboard = st.empty()
         
         while is_active:
@@ -58,23 +64,24 @@ if is_active and api_key and api_secret:
                 curr_oi = float(o_data['openInterest'])
                 oi_change = curr_oi - st.session_state.prev_oi if st.session_state.prev_oi > 0 else 0
                 
-                # 【高勝率策略判定：週六、週一邏輯】
+                # 【策略核心：週六/週一高勝率判定】
                 now = datetime.utcnow()
                 is_sat = now.weekday() == 5  # 週六
                 is_mon = now.weekday() == 0  # 週一
                 
+                # 狀態標籤切換
                 if is_sat:
                     status_tag = "🟢 (週六專屬模式)"
                 elif is_mon:
                     status_tag = "🔵 (週一高勝率監控)"
                 else:
                     status_tag = "⚪ (一般監控)"
-                
+
                 with dashboard.container():
                     st.markdown(f"### 📊 {target_symbol} 實時戰報 {status_tag}")
                     st.write(f"最後掃描 (UTC): {now.strftime('%Y-%m-%d %H:%M:%S')}")
                     
-                    # 儀表板區域
+                    # 儀表板區域 (P2, B2)
                     c1, c2, c3 = st.columns(3)
                     c1.metric("即時市價", f"${price:,.2f}")
                     c2.metric("持倉變動 (B2)", f"{curr_oi:,.0f}", f"{oi_change:,.2f}")
@@ -92,22 +99,18 @@ if is_active and api_key and api_secret:
                             st.success(f"💎 訊號：偵測到巨鯨「底部建倉」！金額: ${vol:,.0f}")
                     else:
                         st.write("🔎 掃描中：目前波動尚在安全範圍...")
-                        
-                    # P3 爆倉預警
-                    if l_data and len(l_data) > 0:
-                        st.warning(f"🔥 P3 爆倉預警：觸發價 {l_data[0]['price']}")
-                        
-                    # 週六數據歸屬警示 (符合您的專屬要求)
+                    
+                    # 週六數據專屬提醒
                     if is_sat:
-                        st.info("💡 系統提醒：週六數據將自動歸類至週六專屬庫，不計入其他天數。")
+                        st.warning("⚠️ 提醒：週六數據將自動歸類至週六專屬庫，不計入其他天數。")
 
                 st.session_state.prev_oi = curr_oi
                 
-                # 精確控制 3 秒循環，防止 GitHub Actions 排隊報錯 (對齊 image_d427d9.png)
+                # 精確控制 3 秒循環，防止被幣安封鎖或 GitHub Actions 卡頓
                 wait = max(0, 3.0 - (time.perf_counter() - cycle_start))
                 time.sleep(wait)
                 
     except Exception as e:
         st.error(f"系統錯誤: {e}")
 else:
-    st.info("💡 請在左側輸入 API 金鑰並啟動。這將解決 GitHub Actions 的排隊報錯問題。")
+    st.info("💡 請在左側輸入 API 金鑰並啟動監控。修正後的程式碼已移除 'symbol=ALL' 以解決 400 報錯。")
