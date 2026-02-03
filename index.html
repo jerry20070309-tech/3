@@ -2,97 +2,107 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ SNIPER V36.0 | 合約專用戰鬥終端</title>
+    <title>⚡ SNIPER V38.0 | 終極合約戰鬥終端</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
         body { background: #000; color: #FFD700; font-family: 'JetBrains Mono', monospace; overflow: hidden; height: 100vh; }
-        .card { background: #080808; border: 1px solid #1a1a1a; margin-bottom: 4px; padding: 18px; position: relative; border-radius: 4px; }
-        .hunt-card { border: 2px solid #ff0000 !important; background: #120000 !important; box-shadow: inset 0 0 20px #ff000022; }
+        .card { background: #0a0a0a; border: 1px solid #1a1a1a; margin-bottom: 6px; padding: 16px; border-radius: 4px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .hunt-card { border: 2px solid #ff0000 !important; background: #1a0505 !important; }
         .tag-active { background: #22c55e !important; color: #000; font-weight: 800; padding: 0 6px; border-radius: 2px; font-size: 10px; }
-        .tag-pattern { border: 1px solid #FFD700; color: #FFD700; padding: 0 6px; border-radius: 2px; font-size: 10px; margin-left: 5px; }
+        .tag-futures { background: #3b82f6 !important; color: #fff; font-weight: 800; padding: 0 6px; border-radius: 2px; font-size: 10px; margin-left: 5px; }
         
-        /* 巨鯨持倉數據：合約核心 */
-        .whale-list { background: #000; padding: 8px; border: 1px solid #222; margin-top: 15px; }
-        .whale-header { display: grid; grid-template-cols: 1.4fr 0.6fr 1.2fr 1.2fr; gap: 5px; border-bottom: 1px solid #333; padding-bottom: 5px; font-size: 9px; color: #555; font-weight: 800; }
-        .whale-row { display: grid; grid-template-cols: 1.4fr 0.6fr 1.2fr 1.2fr; gap: 5px; border-bottom: 1px solid #111; padding: 8px 0; font-size: 11px; }
+        /* 核心數據區域 */
+        .whale-list { background: #000; padding: 8px; border: 1px solid #222; margin-top: 10px; border-radius: 2px; }
+        .whale-header { display: grid; grid-template-cols: 1.2fr 0.6fr 1.2fr 1fr; gap: 5px; border-bottom: 1px solid #333; padding-bottom: 5px; font-size: 10px; color: #555; }
+        .whale-row { display: grid; grid-template-cols: 1.2fr 0.6fr 1.2fr 1fr; gap: 5px; border-bottom: 1px solid #111; padding: 8px 0; font-size: 11px; }
         
-        .val-up { color: #22c55e; }
-        .val-down { color: #ef4444; }
-        input[type=range] { accent-color: #FFD700; width: 100%; cursor: pointer; }
+        .up { color: #22c55e; } .down { color: #ef4444; }
+        .stat-grid { display: grid; grid-template-cols: 1fr 1fr 1fr; gap: 10px; margin-top: 10px; border-top: 1px solid #1a1a1a; pt: 8px; }
+        .stat-label { font-size: 9px; color: #666; font-weight: bold; }
+        .stat-val { font-size: 11px; color: #fff; font-weight: 900; }
+        
+        input[type=range] { accent-color: #FFD700; width: 100%; cursor: pointer; height: 4px; border-radius: 2px; background: #333; }
     </style>
 </head>
 <body class="flex flex-col">
 
     <header class="p-4 border-b border-zinc-800 bg-black flex justify-between items-center shrink-0">
         <div class="flex items-center gap-6">
-            <h1 class="text-3xl font-black text-yellow-500 italic uppercase tracking-tighter">⚡ SNIPER V36.0</h1>
+            <h1 class="text-3xl font-black text-yellow-500 italic uppercase">⚡ SNIPER V38.0</h1>
             <div class="flex gap-2">
-                <input id="searchInput" type="text" placeholder="搜尋合約幣種..." class="bg-zinc-900 text-sm px-4 py-1 w-72 text-white border border-zinc-700 focus:border-yellow-500 outline-none">
-                <button onclick="manualAdd()" class="bg-yellow-600 text-black px-6 py-1 font-bold rounded uppercase">Add</button>
+                <input id="searchInput" type="text" placeholder="輸入幣種搜尋 (無視門檻)..." class="bg-zinc-900 text-sm px-4 py-1 w-72 text-white border border-zinc-700 outline-none">
+                <button onclick="manualAdd()" class="bg-yellow-600 text-black px-6 py-1 font-bold rounded">ADD</button>
             </div>
         </div>
-        <div class="flex items-center gap-6">
-            <div id="status" class="text-[10px] text-zinc-500 font-bold uppercase">System: <span class="text-red-600">Standby</span></div>
-            <button id="sysBtn" onclick="toggleSystem()" class="bg-blue-600 text-white px-10 py-2 rounded font-black hover:bg-blue-500 shadow-lg uppercase tracking-widest">Start Contract Radar</button>
-        </div>
+        <button id="sysBtn" onclick="toggleSystem()" class="bg-red-600 text-white px-8 py-2 rounded font-black hover:bg-red-500 uppercase tracking-tighter">Start Futures Radar</button>
     </header>
 
-    <div class="bg-zinc-950 p-3 border-b border-zinc-800 grid grid-cols-5 gap-8 items-center uppercase font-black text-zinc-500 text-[11px]">
-        <div>🌀 SQZ <span class="text-white ml-2">2.5%</span><input type="range" min="5" max="50" value="25"></div>
-        <div>🎯 POC <span class="text-white ml-2">2.0%</span><input type="range" min="1" max="100" value="20"></div>
-        <div>🚨 SLP <span class="text-white ml-2">-3.5%</span><input type="range" min="5" max="100" value="35"></div>
-        <div>🚀 DRV <span class="text-white ml-2">6.0</span><input type="range" min="10" max="150" value="60"></div>
-        <div>💰 FUND <span class="text-white ml-2">0.01%</span><input type="range" min="1" max="100" value="10"></div>
+    <div class="bg-zinc-950 p-3 border-b border-zinc-800 grid grid-cols-5 gap-8 uppercase font-black text-zinc-500 text-[11px]">
+        <div>🌀 SQZ <span id="v_sqz" class="text-white ml-1">2.5%</span><input type="range" id="i_sqz" min="1" max="100" value="25"></div>
+        <div>🎯 POC <span id="v_poc" class="text-white ml-1">2.0%</span><input type="range" id="i_poc" min="1" max="100" value="20"></div>
+        <div>🚨 SLP <span id="v_slp" class="text-white ml-1">-3.5%</span><input type="range" id="i_slp" min="1" max="100" value="35"></div>
+        <div>🚀 DRV <span id="v_drv" class="text-white ml-1">6.0</span><input type="range" id="i_drv" min="1" max="150" value="60"></div>
+        <div>💰 FUND <span id="v_mom" class="text-white ml-1">0.01%</span><input type="range" id="i_mom" min="1" max="100" value="10"></div>
     </div>
 
     <main id="dashboard" class="flex-1 p-4 overflow-y-auto grid grid-cols-3 gap-6 content-start bg-black"></main>
 
 <script>
     let stats = {}, pinned = new Set(), isRunning = false;
+    let CONFIG = { sqz: 2.5, poc: 2.0, slp: -3.5, drv: 6.0 };
 
-    // 真正的合約巨鯨持倉挖掘 (模擬合約持倉 API)
-    function getContractWhales(symbol) {
-        const prefix = symbol.replace('USDT','').substring(0,3);
-        return [
-            { a: `0x${prefix}_Whale_1`, side: "SHORT", size: (Math.random()*150+50).toFixed(1) + " BTC", pnl: (Math.random() > 0.4 ? "+" : "-") + (Math.random()*15).toFixed(2) + "%" },
-            { a: `0x${prefix}_Whale_2`, side: "LONG", size: (Math.random()*80+20).toFixed(1) + " BTC", pnl: "+" + (Math.random()*40).toFixed(1) + "%" },
-            { a: `0x${prefix}_Whale_3`, side: "SHORT", size: (Math.random()*100).toFixed(1) + " BTC", pnl: (Math.random() > 0.5 ? "+" : "-") + (Math.random()*10).toFixed(1) + "%" }
-        ];
+    // 滑桿連動更新
+    ['sqz','poc','slp','drv','mom'].forEach(id => {
+        document.getElementById('i_'+id).oninput = (e) => {
+            let val = e.target.value;
+            let disp = (val/10).toFixed(1);
+            document.getElementById('v_'+id).innerText = (id==='slp'?'-':'') + disp + (id==='drv'?'':'%');
+            CONFIG[id] = parseFloat(disp);
+            render();
+        }
+    });
+
+    // 模擬合約核心數據：包含 OI、持倉比、巨鯨盈虧
+    function getWhaleIntelligence(symbol) {
+        const s = symbol.replace('USDT','');
+        return {
+            oi: (Math.random()*15).toFixed(2) + "%",
+            fund: (Math.random()*0.03).toFixed(4) + "%",
+            ratio: (Math.random()*2 + 0.5).toFixed(2),
+            list: [
+                { a: `0x${s}_Whale_Alpha`, d: "SHORT", v: (Math.random()*120).toFixed(1)+"M", p: "-"+(Math.random()*8).toFixed(2)+"%" },
+                { a: `0x${s}_Whale_Beta`, d: "LONG", v: (Math.random()*250).toFixed(1)+"M", p: "+"+(Math.random()*45).toFixed(1)+"%" },
+                { a: `0x${s}_Whale_Gamma`, d: "LONG", v: (Math.random()*40).toFixed(1)+"M", p: "+"+(Math.random()*12).toFixed(1)+"%" }
+            ]
+        };
     }
 
     async function scan() {
         if(!isRunning) return;
         try {
-            // 切換至幣安合約 (Futures) 數據源
             const res = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
             const data = await res.json();
-            
             data.forEach(t => {
                 const s = t.symbol; if(!s.endsWith('USDT')) return;
                 const change = parseFloat(t.priceChangePercent);
-                const vol = parseFloat(t.quoteVolume);
-                
-                // 【嚴格過濾】不到 70 分絕對不上榜
-                const score = (Math.abs(change) > 5.5 || (vol/1e8) > 120) ? 98 : 35;
+                const score = (Math.abs(change) > 5.5) ? 98 : 35; // 只有強勢幣才准上榜
 
-                if (!stats[s]) stats[s] = { s, whales: [] };
-                stats[s] = { ...stats[s], price: t.lastPrice, change: t.priceChangePercent, score, vol: (vol/1e6).toFixed(2) };
+                if (!stats[s]) stats[s] = { s, intel: null };
+                stats[s] = { ...stats[s], price: t.lastPrice, change: t.priceChangePercent, score };
 
-                // 合約達標後才挖掘巨鯨倉位
-                if (score >= 70 && stats[s].whales.length === 0) {
-                    stats[s].whales = getContractWhales(s);
+                if (score >= 70 && !stats[s].intel) {
+                    stats[s].intel = getWhaleIntelligence(s);
                 }
             });
             render();
-        } catch (e) { console.error("API Error"); }
-        setTimeout(scan, 2000);
+        } catch (e) {}
+        setTimeout(scan, 2500);
     }
 
     function render() {
         const board = document.getElementById('dashboard');
         const q = document.getElementById('searchInput').value.toUpperCase().trim();
-        
         const list = Object.values(stats).filter(x => {
             if (q !== "") return x.s.includes(q);
             return (x.score >= 70 || pinned.has(x.s));
@@ -101,51 +111,39 @@
         board.innerHTML = list.map(x => `
             <div class="card ${x.score >= 90 ? 'hunt-card' : ''}">
                 <div class="flex justify-between items-start">
-                    <div class="flex items-center">
-                        <span class="tag-active">FUTURES</span>
-                        <span class="tag-pattern">OI_PUMP</span>
-                    </div>
-                    <span class="text-sm font-black text-yellow-500">SC:${x.score}</span>
+                    <div class="flex items-center"><span class="tag-active">TIGHT</span><span class="tag-futures">FUTURES</span></div>
+                    <span class="text-xs font-black text-yellow-500">SC:${x.score}</span>
                 </div>
-                
-                <div class="flex justify-between items-end my-5">
-                    <div>
-                        <h2 class="text-4xl font-black italic text-white tracking-tighter">${x.s.replace('USDT','')}</h2>
-                        <div class="text-[10px] text-zinc-500 font-bold mt-1 uppercase">24h Vol: ${x.vol}M</div>
-                    </div>
+
+                <div class="flex justify-between items-end my-4">
+                    <h2 class="text-4xl font-black italic text-white tracking-tighter">${x.s.replace('USDT','')}</h2>
                     <div class="text-right">
-                        <div class="${parseFloat(x.change)>=0?'val-up':'val-down'} font-black text-lg leading-none">${x.change}%</div>
-                        <div class="text-sm text-zinc-400 font-bold mt-1">$${x.price}</div>
+                        <div class="${parseFloat(x.change)>=0?'up':'down'} font-black text-xl leading-none">${x.change}%</div>
+                        <div class="text-xs text-zinc-500 font-bold mt-1">$${x.price}</div>
                     </div>
                 </div>
 
-                <div class="whale-list font-mono">
-                    <div class="whale-header">
-                        <span>CONTRACT_ADDR</span><span>SIDE</span><span>POS_SIZE</span><span class="text-right">UNPnL</span>
-                    </div>
-                    ${x.whales.map(w => `
+                <div class="stat-grid">
+                    <div><div class="stat-label">OI CHANGE</div><div class="stat-val up">${x.intel ? x.intel.oi : '--'}</div></div>
+                    <div><div class="stat-label">FUNDING</div><div class="stat-val">${x.intel ? x.intel.fund : '--'}</div></div>
+                    <div><div class="stat-label">L/S RATIO</div><div class="stat-val text-blue-400">${x.intel ? x.intel.ratio : '--'}</div></div>
+                </div>
+
+                <div class="whale-list">
+                    <div class="whale-header"><span>WHALE_ADDR</span><span>SIDE</span><span>SIZE</span><span class="text-right">PNL</span></div>
+                    ${(x.intel ? x.intel.list : []).map(w => `
                         <div class="whale-row">
                             <span class="text-blue-500">${w.a}</span>
-                            <span class="${w.side==='LONG'?'val-up':'val-down'} font-bold">${w.side}</span>
-                            <span class="text-zinc-300 font-bold">${w.size}</span>
-                            <span class="${w.pnl.startsWith('+')?'val-up':'val-down'} text-right font-black">${w.pnl}</span>
+                            <span class="${w.d==='LONG'?'up':'down'} font-bold">${w.d}</span>
+                            <span class="text-zinc-300">${w.v}</span>
+                            <span class="${w.p.startsWith('+')?'up':'down'} text-right font-black">${w.p}</span>
                         </div>
                     `).join('')}
-                </div>
-                
-                <div class="mt-4 flex justify-between border-t border-zinc-900 pt-3">
-                    <span class="text-[9px] font-black text-blue-400">🛡️ OI 異動偵測中</span>
-                    <span class="text-[9px] font-black text-zinc-600 uppercase">Leverage Tracking Enabled</span>
                 </div>
             </div>`).join('');
     }
 
-    function toggleSystem() { 
-        isRunning = !isRunning; 
-        document.getElementById('status').innerHTML = isRunning ? '<span class="text-green-500">Active</span>' : '<span class="text-red-600">Standby</span>';
-        if(isRunning) scan(); 
-    }
-    
+    function toggleSystem() { isRunning = !isRunning; if(isRunning) scan(); }
     function manualAdd() { 
         let s = document.getElementById('searchInput').value.toUpperCase().trim();
         if(s) { if(!s.endsWith('USDT')) s+='USDT'; pinned.add(s); render(); }
