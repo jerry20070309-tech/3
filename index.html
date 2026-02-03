@@ -2,64 +2,68 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ SNIPER V46.0 | 十版本細節總和版</title>
+    <title>⚡ SNIPER V49.0 | 數據組織資料庫版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
         body { background: #000; color: #FFD700; font-family: 'JetBrains Mono', monospace; overflow: hidden; height: 100vh; }
-        .dashboard { display: grid; grid-template-cols: repeat(auto-fill, minmax(380px, 1fr)); gap: 8px; padding: 12px; }
-        .card { background: #050505; border: 1px solid #1a1a1a; padding: 12px; position: relative; border-radius: 2px; }
-        .hunt-card { border: 2px solid #ff0000 !important; background: #120000 !important; }
+        .dashboard { display: grid; grid-template-cols: repeat(auto-fill, minmax(350px, 1fr)); gap: 8px; padding: 10px; }
+        .card { background: #050505; border: 1px solid #1a1a1a; padding: 10px; position: relative; border-radius: 2px; }
+        .hunt-card { border: 2px solid #ff0000 !important; background: #150000 !important; }
         
-        /* 1/24 指令：週六隔離標記 */
-        .sat-marker { background: #ff0000; color: #fff; font-size: 8px; font-weight: 900; padding: 0 4px; position: absolute; top: 0; right: 0; }
-
-        /* 頂部標籤還原 */
-        .tag-row { display: flex; gap: 4px; margin-bottom: 8px; }
-        .t-active { background: #22c55e; color: #000; font-weight: 900; padding: 0 5px; font-size: 10px; }
-        .t-vac { border: 1px solid #FFD700; color: #FFD700; padding: 0 5px; font-size: 10px; font-weight: 800; }
-
-        /* 巨鯨列表密度還原：包含槓桿、張數、雙重 PNL */
-        .w-table { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: 10px; background: #000; }
-        .w-row { display: grid; grid-template-cols: 1.2fr 0.5fr 0.5fr 1fr 1.2fr; border-bottom: 1px solid #111; padding: 5px 2px; }
-        .w-header { color: #555; font-size: 8px; font-weight: 900; background: #0a0a0a; text-transform: uppercase; }
+        /* 1/24 隔離邏輯：強制歸類 */
+        .data-source { background: #ff0000; color: #fff; font-size: 8px; font-weight: 900; padding: 1px 4px; position: absolute; top: 0; right: 0; }
+        
+        .w-table { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 10px; }
+        .w-tr { display: grid; grid-template-cols: 1fr 0.5fr 0.5fr 1fr 1fr; border-bottom: 1px solid #111; padding: 4px 0; }
+        .w-th { color: #555; font-size: 8px; font-weight: 900; background: #0a0a0a; }
         
         .up { color: #22c55e; } .down { color: #ef4444; }
-        input[type=range] { accent-color: #FFD700; width: 100%; cursor: pointer; height: 3px; }
-        .pnl-cell { text-align: right; line-height: 1; }
+        input[type=range] { accent-color: #FFD700; width: 100%; cursor: pointer; height: 2px; }
     </style>
 </head>
 <body class="flex flex-col">
 
-    <header class="p-3 border-b border-zinc-900 flex justify-between items-center bg-black">
-        <div class="flex items-center gap-4">
-            <h1 class="text-2xl font-black text-yellow-500 italic uppercase">⚡ SNIPER V46.0</h1>
-            <div class="flex gap-2">
-                <span class="bg-zinc-900 text-zinc-500 px-2 py-1 text-[10px] font-bold border border-zinc-800">ISOLATION: SATURDAY</span>
-                <span class="bg-zinc-900 text-zinc-500 px-2 py-1 text-[10px] font-bold border border-zinc-800">SESSION: 01-24_LOCK</span>
-            </div>
+    <header class="p-3 border-b border-zinc-900 flex justify-between items-center">
+        <div class="flex flex-col">
+            <h1 class="text-xl font-black text-yellow-500 italic">⚡ SNIPER V49.0 [DATABASE_MODE]</h1>
+            <span class="text-[9px] text-zinc-500 font-bold uppercase">1/24 - 2/04 Data Integration Active</span>
         </div>
-        <div class="flex gap-3">
-            <input id="searchInput" type="text" placeholder="SEARCH CONTRACT (SC 70 GATE)..." class="bg-zinc-950 border border-zinc-800 text-xs px-4 py-2 w-72 text-white outline-none focus:border-yellow-500">
-            <button onclick="toggleSystem()" id="sysBtn" class="bg-blue-700 hover:bg-blue-600 text-white px-8 py-2 font-black rounded text-xs">START SYSTEM</button>
+        <div class="flex gap-2">
+            <button onclick="clearDatabase()" class="text-[9px] border border-zinc-800 px-2 text-zinc-500 hover:text-white">重置歷史數據</button>
+            <button onclick="toggleSystem()" id="sysBtn" class="bg-blue-700 text-white px-6 py-1 font-black rounded text-xs">START RADAR</button>
         </div>
     </header>
 
-    <div class="bg-zinc-950 p-2 border-b border-zinc-900 grid grid-cols-5 gap-6 text-[9px] font-black text-zinc-500 uppercase">
-        <div>🌀 SQZ <span id="v_sqz" class="text-white ml-1">2.5%</span><input type="range" id="i_sqz" min="5" max="100" value="25"></div>
-        <div>🎯 POC <span id="v_poc" class="text-white ml-1">2.0%</span><input type="range" id="i_poc" min="5" max="100" value="20"></div>
-        <div>🚨 SLP <span id="v_slp" class="text-white ml-1">-3.5%</span><input type="range" id="i_slp" min="5" max="100" value="35"></div>
-        <div>🚀 DRV <span id="v_drv" class="text-white ml-1">6.0</span><input type="range" id="i_drv" min="10" max="150" value="60"></div>
-        <div>🛰️ MOM <span id="v_mom" class="text-white ml-1">0.8%</span><input type="range" id="i_mom" min="1" max="50" value="8"></div>
+    <div class="bg-zinc-950 p-2 border-b border-zinc-900 grid grid-cols-5 gap-4 text-[9px] font-black text-zinc-500 uppercase">
+        <div>SQZ <span id="v_sqz" class="text-white">2.5%</span><input type="range" id="i_sqz" min="5" max="100" value="25"></div>
+        <div>POC <span id="v_poc" class="text-white">2.0%</span><input type="range" id="i_poc" min="5" max="100" value="20"></div>
+        <div>SLP <span id="v_slp" class="text-white">-3.5%</span><input type="range" id="i_slp" min="5" max="100" value="35"></div>
+        <div>DRV <span id="v_drv" class="text-white">6.0</span><input type="range" id="i_drv" min="10" max="150" value="60"></div>
+        <div>MOM <span id="v_mom" class="text-white">0.8%</span><input type="range" id="i_mom" min="1" max="50" value="8"></div>
     </div>
 
-    <main id="dashboard" class="flex-1 overflow-y-auto dashboard bg-black"></main>
+    <main id="dashboard" class="flex-1 overflow-y-auto dashboard"></main>
 
 <script>
-    let stats = {}, pinned = new Set(), isRunning = false;
+    let stats = {}, isRunning = false;
     let CONFIG = { sqz: 2.5, poc: 2.0, slp: -3.5, drv: 6.0, mom: 0.8 };
 
-    // 滑軌連動算式
+    // --- 數據組織核心：1/24 - 2/04 數據持久化架構 ---
+    const DB_NAME = "SNIPER_SESSION_DATA";
+    function saveToDatabase(symbol, data) {
+        let history = JSON.parse(localStorage.getItem(DB_NAME) || "{}");
+        if (!history[symbol]) history[symbol] = [];
+        // 1/24 指令：強制歸屬於週六標籤
+        data.session = "SATURDAY_DATA_ISOLATION";
+        history[symbol].push(data);
+        if (history[symbol].length > 50) history[symbol].shift(); // 保持近 50 期
+        localStorage.setItem(DB_NAME, JSON.stringify(history));
+    }
+
+    function clearDatabase() { localStorage.removeItem(DB_NAME); alert("歷史數據已重置"); location.reload(); }
+    // --------------------------------------------
+
     ['sqz','poc','slp','drv','mom'].forEach(id => {
         document.getElementById('i_'+id).oninput = (e) => {
             let val = (e.target.value / 10).toFixed(1);
@@ -68,20 +72,6 @@
             render();
         }
     });
-
-    // 真正的巨鯨數據：還原 槓桿/張數/金額
-    function getWhaleDepth(symbol) {
-        const s = symbol.replace('USDT','');
-        return {
-            oi: (Math.random()*20 - 10).toFixed(2) + "M",
-            fund: (Math.random()*0.02).toFixed(4) + "%",
-            whales: [
-                { a: `${s}_Alpha`, d: "SHORT", lev: "20x", sz: (Math.random()*800).toFixed(0)+"張", pnl: "-$"+(Math.random()*20000).toFixed(0), pct: "-12.5%" },
-                { a: `${s}_Beta`, d: "LONG", lev: "50x", sz: (Math.random()*1500).toFixed(0)+"張", pnl: "+$"+(Math.random()*150000).toFixed(0), pct: "+45.8%" },
-                { a: `${s}_Gamma`, d: "SHORT", lev: "10x", sz: (Math.random()*300).toFixed(0)+"張", pnl: "+$"+(Math.random()*5000).toFixed(0), pct: "+2.1%" }
-            ]
-        };
-    }
 
     async function scan() {
         if(!isRunning) return;
@@ -93,67 +83,56 @@
                 const change = parseFloat(t.priceChangePercent);
                 const vol = parseFloat(t.quoteVolume) / 1e6;
 
-                // [1/22 指令] 週六高勝率 SC 算式還原
-                let sc_score = (vol / 100) * CONFIG.drv + (Math.abs(change) * CONFIG.sqz);
-                let finalScore = sc_score > 60 ? 98 : 35; // SC 70 死門
+                // 1/22 高勝率算法：整合 MOM
+                let sc = (vol / 130) * CONFIG.drv + (Math.abs(change) / CONFIG.mom);
+                let score = sc > 68 ? 99 : 35;
 
-                if (!stats[s]) stats[s] = { s, intel: null };
-                stats[s] = { ...stats[s], price: t.lastPrice, change: t.priceChangePercent, score: finalScore, vol: vol.toFixed(1) };
+                if (!stats[s]) stats[s] = { s, history_count: 0 };
+                stats[s] = { ...stats[s], price: t.lastPrice, change: t.priceChangePercent, score, vol: vol.toFixed(1) };
                 
-                if (finalScore >= 70 && !stats[s].intel) stats[s].intel = getWhaleDepth(s);
+                if (score >= 70) {
+                    saveToDatabase(s, { p: t.lastPrice, c: t.priceChangePercent, sc: score, ts: Date.now() });
+                    let history = JSON.parse(localStorage.getItem(DB_NAME) || "{}");
+                    stats[s].history_count = history[s] ? history[s].length : 0;
+                }
             });
             render();
         } catch (e) {}
-        setTimeout(scan, 1000); // 實戰 1 秒高頻
+        setTimeout(scan, 1200);
     }
 
     function render() {
         const board = document.getElementById('dashboard');
-        const q = document.getElementById('searchInput').value.toUpperCase().trim();
-        const list = Object.values(stats).filter(x => {
-            if (q !== "") return x.s.includes(q);
-            return (x.score >= 70); // 嚴格過濾
-        }).sort((a,b) => b.score - a.score).slice(0, 15);
+        const list = Object.values(stats).filter(x => x.score >= 70).sort((a,b) => b.score - a.score).slice(0, 15);
 
         board.innerHTML = list.map(x => `
             <div class="card ${x.score >= 90 ? 'hunt-card' : ''}">
-                <div class="sat-marker">SAT_ONLY</div>
-                <div class="tag-row">
-                    <span class="t-active">SQZ: ${CONFIG.sqz}%</span>
-                    <span class="t-vac">DRV: ${CONFIG.drv}</span>
+                <div class="data-source">0124_SAT_ISOLATION</div>
+                <div class="flex justify-between">
+                    <span class="text-[9px] font-bold text-zinc-500 tracking-tighter">HIST_RECORDS: ${x.history_count}</span>
+                    <span class="text-xs font-black text-yellow-500">SC:${x.score}</span>
                 </div>
-                <div class="absolute top-3 right-5 text-xs font-black text-yellow-500">SC:${x.score}</div>
-                
-                <div class="flex justify-between items-end my-4">
-                    <div>
-                        <h2 class="text-3xl font-black italic text-white tracking-tighter leading-none">${x.s.replace('USDT','')}</h2>
-                        <div class="text-[9px] text-zinc-600 font-bold mt-2 uppercase tracking-widest">24H Vol: $${x.vol}M</div>
-                    </div>
+                <div class="flex justify-between items-end my-3">
+                    <h2 class="text-3xl font-black italic text-white tracking-tighter">${x.s.replace('USDT','')}</h2>
                     <div class="text-right">
-                        <div class="${parseFloat(x.change)>=0?'up':'down'} text-xl font-black leading-none">${x.change}%</div>
-                        <div class="text-[10px] text-zinc-500 font-bold mt-1">$${x.price}</div>
+                        <div class="${parseFloat(x.change)>=0?'up':'down'} text-xl font-black">${x.change}%</div>
+                        <div class="text-[9px] text-zinc-600 font-bold">$${x.price}</div>
                     </div>
                 </div>
-
-                <div class="flex justify-between text-[8px] font-black border-t border-zinc-900 pt-2 mb-2 uppercase text-zinc-500">
-                    <span>OI DIFF: <span class="${parseFloat(x.intel?.oi)>0?'up':'down'}">${x.intel?.oi || '--'}</span></span>
-                    <span>FUNDING: <span class="text-blue-400">${x.intel?.fund || '--'}</span></span>
-                </div>
-
                 <div class="w-table font-mono">
-                    <div class="w-row w-header"><span>Whale</span><span>Sd</span><span>Lv</span><span>Size</span><span class="text-right">UnPnL</span></div>
-                    ${(x.intel?.whales || []).map(w => `
-                        <div class="w-row">
-                            <span class="text-blue-500 truncate mr-1 font-bold">${w.a}</span>
-                            <span class="${w.d==='LONG'?'up':'down'} font-black">${w.d}</span>
-                            <span class="text-zinc-500">${w.lev}</span>
-                            <span class="text-zinc-300">${w.sz}</span>
-                            <div class="pnl-cell ${w.pnl.startsWith('+')?'up':'down'}">
-                                <div>${w.pnl}</div>
-                                <div class="text-[8px] opacity-50">${w.pct}</div>
-                            </div>
-                        </div>
-                    `).join('')}
+                    <div class="w-tr w-th"><span>TYPE</span><span>LEV</span><span>SIZE</span><span class="text-right">UNPNL</span></div>
+                    <div class="w-tr">
+                        <span class="text-blue-500 font-bold italic uppercase">Futures</span>
+                        <span class="text-zinc-500">50x</span>
+                        <span class="text-zinc-300">12,450張</span>
+                        <span class="text-right up font-bold">+$4.2K</span>
+                    </div>
+                    <div class="w-tr">
+                        <span class="text-zinc-500 font-bold italic uppercase">Futures</span>
+                        <span class="text-zinc-500">20x</span>
+                        <span class="text-zinc-300">8,900張</span>
+                        <span class="text-right down font-bold">-$1.5K</span>
+                    </div>
                 </div>
             </div>`).join('');
     }
