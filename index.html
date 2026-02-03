@@ -2,29 +2,29 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ SNIPER V13.5 | 策略整合自動監控</title>
+    <title>⚡ SNIPER X-RADAR PRO | 巨鯨深度監控版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
         body { background: #050505; color: #FFD700; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
         .card { background: #0a0a0a; border: 1px solid #1a1a1a; transition: 0.3s; position: relative; border-radius: 8px; }
-        .hunt-active { border: 2px solid #ef4444 !important; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); animation: pulse 1.5s infinite; }
-        .sat-card { border: 2px solid #22c55e !important; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        .hunt-active { border: 2px solid #ef4444 !important; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
+        .whale-flash { background: #7f1d1d !important; color: white !important; animation: flash 0.5s; } /* 100k大單閃爍 */
+        @keyframes flash { from { background: #ff0000; } to { background: #7f1d1d; } }
         #logBox::-webkit-scrollbar { width: 4px; }
         #logBox::-webkit-scrollbar-thumb { background: #333; }
-        input[type=range] { accent-color: #FFD700; }
+        .metric-box { background: rgba(0,0,0,0.6); border: 1px solid #222; padding: 4px; border-radius: 4px; }
     </style>
 </head>
 <body class="h-screen flex flex-col p-2 text-[10px]">
 
     <header class="p-3 border-b border-yellow-900 flex justify-between items-center shrink-0 bg-black">
         <div>
-            <h1 class="text-xl font-black text-yellow-500 italic uppercase">⚡ SNIPER X-RADAR</h1>
-            <div id="statusInfo" class="text-zinc-500 font-bold italic mt-1">系統初始化中...</div>
+            <h1 class="text-xl font-black text-yellow-500 italic uppercase text-shadow">⚡ SNIPER X-RADAR PRO</h1>
+            <div id="statusInfo" class="text-zinc-500 font-bold italic mt-1 uppercase">偵測模組：巨鯨 + 爆倉 + 深度掛單</div>
         </div>
         <div class="flex gap-4">
-            <div id="klineStatus" class="bg-zinc-900 px-3 py-1 rounded text-white border border-zinc-800">等待對齊...</div>
+            <div id="klineStatus" class="bg-zinc-900 px-3 py-1 rounded text-white border border-zinc-800">數據流監控中...</div>
             <button id="sysBtn" onclick="toggleSystem()" class="bg-blue-600 text-white px-6 py-1 rounded font-black hover:bg-blue-500">START RADAR</button>
         </div>
     </header>
@@ -53,13 +53,14 @@
     </div>
 
     <div class="flex flex-1 overflow-hidden gap-2 mt-2">
-        <main class="flex-1 overflow-y-auto p-2 bg-black/40">
+        <main class="flex-1 overflow-y-auto p-2">
             <div id="dashboard" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"></div>
         </main>
 
-        <aside class="w-72 border-l border-yellow-900 bg-zinc-950 flex flex-col shrink-0">
-            <div class="p-2 border-b border-zinc-800 text-red-500 font-bold flex justify-between uppercase">
-                <span>🛡️ 戰鬥日誌 (深層偵測)</span>
+        <aside class="w-80 border-l border-yellow-900 bg-zinc-950 flex flex-col shrink-0">
+            <div class="p-2 border-b border-zinc-800 text-red-500 font-bold flex justify-between uppercase bg-black">
+                <span>🛡️ 巨鯨及異動數據</span>
+                <span id="orderCount" class="text-zinc-600">ORDERS: 0</span>
             </div>
             <div id="logBox" class="flex-1 overflow-y-auto p-2 space-y-1 font-mono text-[9px]"></div>
         </aside>
@@ -68,48 +69,28 @@
 <script>
     let isRunning = false;
     let stats = {}, activeMonitors = new Map();
+    let orderCount = 0;
     let FILTER = { SQZ: 0.012, POC: 0.011, SLP: -0.15, DRV: 90, MOM: 0.008 };
-    const WHALE_MIN = 50000; // 5萬美金定義為巨鯨
 
-    // 1. 初始化滑桿連動
     function setupSliders() {
         const binds = [
-            {id:'i_sqz', vid:'v_sqz', key:'SQZ', div:1000, suffix:'%'},
-            {id:'i_poc', vid:'v_poc', key:'POC', div:1000, suffix:'%'},
-            {id:'i_slp', vid:'v_slp', key:'SLP', div:100, prefix:'-'},
+            {id:'i_sqz', vid:'v_sqz', key:'SQZ', div:1000},
+            {id:'i_poc', vid:'v_poc', key:'POC', div:1000},
+            {id:'i_slp', vid:'v_slp', key:'SLP', div:100},
             {id:'i_drv', vid:'v_drv', key:'DRV', div:1},
-            {id:'i_mom', vid:'v_mom', key:'MOM', div:1000, suffix:'%'}
+            {id:'i_mom', vid:'v_mom', key:'MOM', div:1000}
         ];
         binds.forEach(b => {
             document.getElementById(b.id).oninput = (e) => {
                 let v = parseFloat(e.target.value);
                 FILTER[b.key] = (b.key === 'SLP' ? -(v/100) : v / b.div);
-                document.getElementById(b.vid).innerText = (b.prefix || '') + (b.key === 'DRV' ? v : (v/10).toFixed(1)) + (b.suffix || '');
+                document.getElementById(b.vid).innerText = (b.key === 'SLP' ? '-' : '') + (b.key === 'DRV' ? v : (v/10).toFixed(1)) + (b.key === 'DRV' ? '' : '%');
             };
         });
     }
 
-    // 2. 日期與模式判斷 (根據你的指令)
-    function checkDateMode() {
-        const day = new Date().getDay();
-        const info = document.getElementById('statusInfo');
-        if (day === 6) {
-            info.innerText = "📅 模式：週六專屬 (數據嚴格歸屬於週六)";
-            info.className = "text-green-400 font-bold italic";
-            return "SATURDAY";
-        } else if (day === 1) {
-            info.innerText = "📅 模式：週一高勝率監控";
-            info.className = "text-blue-400 font-bold italic";
-            return "MONDAY";
-        }
-        info.innerText = "📅 模式：一般時段掃描";
-        return "NORMAL";
-    }
-
-    // 3. 核心選幣策略 (V11.8 邏輯)
     async function coreScan() {
         if(!isRunning) return;
-        const mode = checkDateMode();
         try {
             const res = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
             const data = await res.json();
@@ -123,110 +104,136 @@
                 const maSqz = (parseFloat(t.highPrice) - parseFloat(t.lowPrice)) / avgPrice;
                 const drvScore = Math.min(100, (Math.abs(parseFloat(t.priceChangePercent)) / (parseFloat(t.quoteVolume) / 1e8)) * 15);
                 
-                // 評分計算
                 let score = 0;
                 if (maSqz <= FILTER.SQZ) score += 30;
                 if (Math.abs(parseFloat(t.priceChangePercent))/100 >= FILTER.POC) score += 25;
                 if (drvScore >= FILTER.DRV) score += 35;
                 if (parseFloat(t.priceChangePercent) > 0) score += 10;
 
-                stats[s] = { s, price, score, maSqz, drvScore, pc: t.priceChangePercent };
+                if (!stats[s]) stats[s] = { s, score: 0, wallPrice: '0', liqPrice: '0', orderCount: 0 };
+                stats[s] = { ...stats[s], price, score, maSqz, drvScore };
 
-                // 4. 關鍵橋接：評分 >= 75 啟動監控
+                // 評分達標 (75分以上)
                 if (score >= 75) {
-                    initWhaleSniper(s, mode);
+                    initDeepWhaleMonitor(s);
                 } else if (score < 60 && activeMonitors.has(s)) {
-                    removeWhaleSniper(s);
+                    stopDeepWhaleMonitor(s);
                 }
             });
             renderUI();
-        } catch (e) { console.error("Scanner Error", e); }
+        } catch (e) { console.error(e); }
         setTimeout(coreScan, 3000);
     }
 
-    // 5. 巨鯨與爆倉深度監控 (WebSocket)
-    function initWhaleSniper(symbol, mode) {
+    function initDeepWhaleMonitor(symbol) {
         if (activeMonitors.has(symbol)) return;
 
-        addLog(`🎯 <span class="text-yellow-500">${symbol}</span> 評分達標，連線深度雷達...`);
+        addLog(`🎯 <span class="text-yellow-400">已偵測高分幣：${symbol}，啟動巨鯨偵測</span>`);
         
         const ws = new WebSocket(`wss://fstream.binance.com/ws/${symbol.toLowerCase()}@aggTrade/${symbol.toLowerCase()}@forceOrder`);
         
         ws.onmessage = (e) => {
             const d = JSON.parse(e.data);
-            // 監控爆倉
+            orderCount++;
+            document.getElementById('orderCount').innerText = `ORDERS: ${orderCount}`;
+
+            // 1. 爆倉價格捕捉
             if (d.e === "forceOrder") {
-                const liqVal = parseFloat(d.o.q) * parseFloat(d.o.p);
-                addLog(`💀 <span class="text-red-500">爆倉</span> ${symbol}: $${(liqVal/1000).toFixed(1)}K (${d.o.S})`);
+                const val = parseFloat(d.o.q) * parseFloat(d.o.p);
+                const price = parseFloat(d.o.p);
+                stats[symbol].liqPrice = price; // 更新爆倉價格到卡片
+                addLog(`💀 <span class="text-red-500 font-bold">爆倉異動</span> ${symbol} | 價格: $${price} | 規模: $${(val/1000).toFixed(1)}K`);
             }
-            // 監控巨鯨大單
+
+            // 2. 巨鯨與 100K 瞬間大單
             if (d.e === "aggTrade") {
                 const val = parseFloat(d.q) * parseFloat(d.p);
-                if (val >= WHALE_MIN) {
-                    const prefix = mode === "SATURDAY" ? "[週六]" : "";
-                    addLog(`🐋 <span class="text-green-500">${prefix}巨鯨</span> ${symbol}: $${(val/1000).toFixed(1)}K`);
+                if (val >= 100000) {
+                    addLog(`🚀 <span class="text-white bg-red-600 px-1">瞬間大訂單 100K+</span> ${symbol} | 金額: $${(val/1000).toFixed(1)}K`, "whale-flash");
+                } else if (val >= 50000) {
+                    addLog(`🐋 <span class="text-green-400">巨鯨大單</span> ${symbol} | 金額: $${(val/1000).toFixed(1)}K`);
                 }
+                stats[symbol].orderCount = (stats[symbol].orderCount || 0) + 1;
             }
         };
 
-        // 獲取巨大掛單價格位 (Depth)
-        const fetchWall = async () => {
+        // 3. 獲取最大掛單量價格 (Order Wall)
+        const fetchDepthWall = async () => {
             try {
-                const res = await fetch(`https://fapi.binance.com/fapi/v1/depth?symbol=${symbol}&limit=10`);
+                const res = await fetch(`https://fapi.binance.com/fapi/v1/depth?symbol=${symbol}&limit=20`);
                 const depth = await res.json();
-                const heavyAsk = depth.asks.sort((a,b) => b[1]-a[1])[0];
-                if(stats[symbol]) stats[symbol].wall = heavyAsk[0];
+                const topAsk = depth.asks.sort((a,b) => b[1]-a[1])[0];
+                const topBid = depth.bids.sort((a,b) => b[1]-a[1])[0];
+                // 比較買賣牆，取最大者顯示
+                stats[symbol].wallPrice = parseFloat(topAsk[1]) > parseFloat(topBid[1]) ? topAsk[0] : topBid[0];
             } catch(e){}
         };
-        const wallTimer = setInterval(fetchWall, 5000);
-        fetchWall();
+        const wallTimer = setInterval(fetchDepthWall, 5000);
+        fetchDepthWall();
 
         activeMonitors.set(symbol, { ws, wallTimer });
     }
 
-    function removeWhaleSniper(symbol) {
+    function stopDeepWhaleMonitor(symbol) {
         const m = activeMonitors.get(symbol);
         if (m) {
             m.ws.close();
             clearInterval(m.wallTimer);
             activeMonitors.delete(symbol);
-            addLog(`🔌 ${symbol} 評分降低，終止深度監控`);
+            addLog(`🔌 ${symbol} 熱度退去，關閉監控`);
         }
     }
 
     function renderUI() {
         const dashboard = document.getElementById('dashboard');
         const list = Object.values(stats).sort((a,b) => b.score - a.score).slice(0, 16);
-        const mode = checkDateMode();
 
         dashboard.innerHTML = list.map(x => {
-            const isMonitoring = activeMonitors.has(x.s);
-            let statusStyle = isMonitoring ? 'hunt-active' : 'base-card';
-            if (mode === 'SATURDAY' && isMonitoring) statusStyle += ' sat-card';
-
+            const isLive = activeMonitors.has(x.s);
             return `
-                <div class="card p-3 ${statusStyle}">
-                    <div class="flex justify-between">
-                        <span class="text-xl font-black text-white">${x.s.replace('USDT','')}</span>
-                        <span class="text-yellow-500 font-bold italic">SCORE: ${x.score.toFixed(0)}</span>
+                <div class="card p-3 ${isLive ? 'hunt-active' : ''}">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-lg font-black text-white">${x.s.replace('USDT','')}</span>
+                        <div class="text-right">
+                            <span class="text-[8px] block text-zinc-500 uppercase">Score</span>
+                            <span class="text-yellow-500 font-black italic">★ ${x.score.toFixed(0)}</span>
+                        </div>
                     </div>
-                    <div class="text-2xl font-black text-white my-1">$${x.price.toLocaleString()}</div>
-                    <div class="grid grid-cols-2 gap-1 text-[8px] text-zinc-500 uppercase font-bold border-t border-zinc-900 pt-2">
-                        <div>SQZ: ${(x.maSqz*100).toFixed(2)}%</div>
-                        <div class="text-right">DRV: ${x.drvScore.toFixed(0)}</div>
-                        <div class="text-blue-500">WALL: ${x.wall ? '$'+parseFloat(x.wall).toFixed(3) : 'SCANNING'}</div>
-                        <div class="text-right ${isMonitoring ? 'text-red-500 animate-pulse' : ''}">${isMonitoring ? '📡 MONITORING' : 'IDLE'}</div>
+                    <div class="text-2xl font-black text-white mb-2">$${x.price.toLocaleString()}</div>
+                    
+                    <div class="space-y-1">
+                        <div class="grid grid-cols-2 gap-1">
+                            <div class="metric-box">
+                                <span class="text-zinc-600 block text-[7px]">最大掛單牆</span>
+                                <span class="text-blue-400 font-bold">$${parseFloat(x.wallPrice).toFixed(4)}</span>
+                            </div>
+                            <div class="metric-box">
+                                <span class="text-zinc-600 block text-[7px]">最近爆倉位</span>
+                                <span class="text-red-500 font-bold">${x.liqPrice != 0 ? '$'+parseFloat(x.liqPrice).toFixed(4) : '--'}</span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-1">
+                            <div class="metric-box">
+                                <span class="text-zinc-600 block text-[7px]">監控訂單數</span>
+                                <span class="text-white font-bold">${x.orderCount || 0}</span>
+                            </div>
+                            <div class="metric-box flex items-center justify-center">
+                                <span class="text-[8px] ${isLive ? 'text-green-500 animate-pulse' : 'text-zinc-700'} font-bold">
+                                    ${isLive ? '📡 LIVE' : '💤 IDLE'}
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
         }).join('');
     }
 
-    function addLog(msg) {
+    function addLog(msg, customClass = "") {
         const box = document.getElementById('logBox');
         const div = document.createElement('div');
-        div.className = "border-b border-zinc-900 pb-1 text-zinc-400";
-        div.innerHTML = `<span class="text-zinc-600 mr-2">[${new Date().toLocaleTimeString()}]</span> ${msg}`;
+        div.className = `p-1 border-b border-zinc-900 ${customClass}`;
+        div.innerHTML = `<span class="text-zinc-600">[${new Date().toLocaleTimeString()}]</span> ${msg}`;
         box.prepend(div);
         if (box.childNodes.length > 50) box.removeChild(box.lastChild);
     }
@@ -235,7 +242,7 @@
         isRunning = !isRunning;
         const btn = document.getElementById('sysBtn');
         btn.innerText = isRunning ? "STOP RADAR" : "START RADAR";
-        btn.className = isRunning ? "bg-red-600 text-white px-6 py-1 rounded font-black hover:bg-red-500" : "bg-blue-600 text-white px-6 py-1 rounded font-black hover:bg-blue-500";
+        btn.className = isRunning ? "bg-red-600 text-white px-6 py-1 rounded font-black" : "bg-blue-600 text-white px-6 py-1 rounded font-black";
         if(isRunning) coreScan();
     }
 
