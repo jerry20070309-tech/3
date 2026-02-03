@@ -14,11 +14,13 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- [B] 側邊欄控制 ---
+# --- [B] 側邊欄控制與 API 配置 ---
 with st.sidebar:
     st.title("⚡ SNIPER RADAR")
+    # P1: 搜尋功能
     symbol = st.text_input("🔍 搜尋監控幣對 (如 BTCUSDT)", value="BTCUSDT").upper()
     whale_limit = st.number_input("💵 巨鯨門檻 (USDT)", value=50000)
+    
     st.divider()
     api_key = st.text_input("Binance API Key", type="password")
     api_secret = st.text_input("Binance API Secret", type="password")
@@ -27,7 +29,7 @@ with st.sidebar:
 # --- [C] 核心數據引擎 ---
 def get_whale_data(client, target):
     try:
-        # P2: 成交, B2: 持倉, P3: 爆倉
+        # P2: 成交數據, B2: 持倉數據, P3: 爆倉預警
         trades = client.futures_recent_trades(symbol=target, limit=20)
         oi = client.futures_open_interest(symbol=target)
         liqs = client.futures_get_all_liquidation_orders(symbol=target, limit=1)
@@ -35,16 +37,16 @@ def get_whale_data(client, target):
     except Exception as e:
         return None, None, None
 
-# --- [D] 執行邏輯 ---
+# --- [D] 執行邏輯與高勝率策略 ---
 if is_active and api_key and api_secret:
     try:
         client = Client(api_key, api_secret)
         
-        # 紀錄持倉歷史
+        # 紀錄持倉歷史 (Session State)
         if 'prev_oi' not in st.session_state:
             st.session_state.prev_oi = 0.0
         
-        # 動態顯示容器
+        # 動態顯示容器，確保 GitHub Actions 運行不卡頓
         placeholder = st.empty()
 
         while is_active:
@@ -55,16 +57,18 @@ if is_active and api_key and api_secret:
                 curr_oi = float(o_data['openInterest'])
                 oi_change = curr_oi - st.session_state.prev_oi if st.session_state.prev_oi > 0 else 0
                 
-                # 【核心策略判定：週六專屬歸屬】
+                # 【策略核心：週六/週一高勝率判定】
                 now = datetime.utcnow()
-                is_sat = now.weekday() == 5
-                is_mon = now.weekday() == 0
-                status_tag = "🟢 (週六模式)" if is_sat else ("🔵 (週一高勝率)" if is_mon else "⚪ (一般時段)")
+                is_sat = now.weekday() == 5  # 週六專屬
+                is_mon = now.weekday() == 0  # 週一計算
+                
+                status_tag = "🟢 (週六專屬模式)" if is_sat else ("🔵 (週一高勝率監控)" if is_mon else "⚪ (一般監控)")
 
                 with placeholder.container():
                     st.markdown(f"### 📊 {symbol} 實時戰報 {status_tag}")
-                    st.write(f"最後更新: {now.strftime('%H:%M:%S')} (UTC)")
+                    st.write(f"最後掃描 (UTC): {now.strftime('%Y-%m-%d %H:%M:%S')}")
 
+                    # 儀表板區域
                     c1, c2, c3 = st.columns(3)
                     c1.metric("即時市價", f"${price:,.2f}")
                     c2.metric("持倉變動 (B2)", f"{curr_oi:,.0f}", f"{oi_change:,.2f}")
@@ -73,6 +77,7 @@ if is_active and api_key and api_secret:
                     c3.metric("最新成交 (P2)", f"${vol:,.0f}")
 
                     st.divider()
+                    # 🕵️ 巨鯨判定：進貨 vs 出貨
                     if vol >= whale_limit:
                         is_seller = t_data[-1]['isBuyerMaker']
                         if is_seller and oi_change < 0:
@@ -80,18 +85,20 @@ if is_active and api_key and api_secret:
                         elif not is_seller and oi_change > 0:
                             st.success(f"💎 訊號：偵測到巨鯨「底部建倉」！金額: ${vol:,.0f}")
                     else:
-                        st.write("📡 掃描中：目前波動低於巨鯨門檻...")
+                        st.write("📡 掃描中：目前波動尚在安全範圍...")
 
+                    # P3 爆倉預警
                     if l_data and len(l_data) > 0:
                         st.warning(f"🔥 P3 爆倉預警：觸發價 {l_data[0]['price']}")
 
+                # 更新持倉歷史
                 st.session_state.prev_oi = curr_oi
             
-            # 強制每 3 秒刷新，防止 GitHub 託管當掉
+            # 精確控制 3 秒循環，防止被幣安封鎖 IP
             time.sleep(3)
             
     except Exception as e:
-        st.error(f"初始化失敗: {e}")
+        st.error(f"系統錯誤: {e}")
 else:
     st.info("💡 請在左側輸入 API 金鑰並點擊啟動。")
-    st.warning("提醒：週六數據將嚴格歸類至週六專屬資料庫。")
+    st.warning("提醒：週六數據將自動歸類至週六專屬庫，不計入其他天數。")
