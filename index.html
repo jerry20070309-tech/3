@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from binance.client import Client
 
-# --- [A] 專業 Sniper 視覺配置 ---
+# --- [A] 專業 Sniper 視覺配置 (對齊 image_a96d94.png) ---
 st.set_page_config(page_title="SNIPER WHALE V1.5", layout="wide")
 st.markdown("""
     <style>
@@ -13,10 +13,10 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- [B] 側邊欄控制：搜尋與 API 配置 ---
+# --- [B] 側邊欄：搜尋與 API 配置 (對齊 image_a96d94.png) ---
 with st.sidebar:
     st.title("⚡ SNIPER RADAR")
-    # P1: 搜尋功能 - 這裡輸入幣名後，雷達會立即切換監控目標
+    # P1 功能：搜尋欄位，更改後立即切換監控目標
     symbol = st.text_input("🔍 搜尋監控幣對 (如 BTCUSDT)", value="BTCUSDT").upper()
     whale_limit = st.number_input("💵 巨鯨門檻 (USDT)", value=50000)
     
@@ -25,10 +25,10 @@ with st.sidebar:
     api_secret = st.text_input("Binance API Secret", type="password")
     is_active = st.toggle("🚀 START MONITORING")
 
-# --- [C] 核心數據引擎：每 3 秒同步發送 3 個封包 ---
+# --- [C] 核心數據引擎：3秒同步發送3個封包 (對齊 image_a96db7.png) ---
 def get_whale_data(client, target):
     try:
-        # 同步請求 3 個封包：P2(成交)、B2(持倉)、P3(爆倉)
+        # P2(成交)、B2(持倉)、P3(爆倉)
         trades = client.futures_recent_trades(symbol=target, limit=20)
         oi = client.futures_open_interest(symbol=target)
         liqs = client.futures_get_all_liquidation_orders(symbol=target, limit=1)
@@ -36,53 +36,49 @@ def get_whale_data(client, target):
     except:
         return None, None, None
 
-# --- [D] 執行邏輯 ---
+# --- [D] 執行邏輯 (對齊 image_a97064.png / image_a97099.png) ---
 if is_active and api_key and api_secret:
     client = Client(api_key, api_secret)
     dashboard = st.empty()
     
-    # 紀錄持倉歷史 (用於計算 B2 變化判斷莊家動向)
+    # 紀錄持倉歷史用於計算 B2 變化 (您的核心邏輯)
     if 'prev_oi' not in st.session_state:
         st.session_state.prev_oi = 0.0
 
     while True:
         cycle_start = time.perf_counter()
-        
-        # 發送並抓取數據包
         t_data, o_data, l_data = get_whale_data(client, symbol)
 
         if t_data and o_data:
             price = float(t_data[-1]['price'])
             curr_oi = float(o_data['openInterest'])
-            # 計算持倉變動 (B2 核心：現有持倉 - 前一次紀錄)
+            # B2 核心計算：持倉變動
             oi_change = curr_oi - st.session_state.prev_oi if st.session_state.prev_oi > 0 else 0
             
-            # 【週六專屬歸屬判定】使用 UTC 時間
+            # 【週六專屬歸屬判定】 (對齊 image_a97064.png)
             is_sat = datetime.utcnow().weekday() == 5
             
             with dashboard.container():
                 st.markdown(f"## 📊 {symbol} 實時戰報 " + ("🟢 (週六模式)" if is_sat else ""))
                 
-                # 數據看板
                 c1, c2, c3 = st.columns(3)
                 c1.metric("即時市價", f"${price:,.2f}")
                 c2.metric("持倉變動 (B2)", f"{curr_oi:,.2f}", f"{oi_change:,.2f}")
                 
                 vol = price * float(t_data[-1]['qty'])
-                c3.metric("最新成交額 (P2)", f"${vol:,.0f}")
+                c3.metric("最新成交 (P2)", f"${vol:,.0f}")
 
-                # 🕵️ 巨鯨判定：進貨 vs 出貨
+                # 🕵️ 巨鯨判定：進貨 vs 出貨 (對齊 image_a970b8.png)
                 st.divider()
                 if vol >= whale_limit:
                     is_seller = t_data[-1]['isBuyerMaker']
-                    # 邏輯：賣大單 + 持倉減少 = 巨鯨逃離 (出貨)
+                    # 邏輯：賣大單 + OI 減少 = 巨鯨逃離 (出貨)
                     if is_seller and oi_change < 0:
                         st.error(f"🚨 警告：偵測到巨鯨「平倉出貨」！金額: ${vol:,.0f}")
-                    # 邏輯：買大單 + 持倉增加 = 巨鯨建倉 (進貨)
+                    # 邏輯：買大單 + OI 增加 = 巨鯨建倉 (進貨)
                     elif not is_seller and oi_change > 0:
                         st.success(f"💎 訊號：偵測到巨鯨「底部建倉」！金額: ${vol:,.0f}")
                 
-                # P3 爆倉預警
                 if l_data:
                     st.warning(f"🔥 P3 爆倉預警：觸發價 {l_data[0]['price']}")
 
@@ -92,4 +88,4 @@ if is_active and api_key and api_secret:
         wait = max(0, 3.0 - (time.perf_counter() - cycle_start))
         time.sleep(wait)
 else:
-    st.info("💡 請在左側輸入 API 金鑰並點擊啟動。這將解決 GitHub Actions 的排隊報錯問題。")
+    st.info("💡 請在左側輸入 API 金鑰並啟動。這將解決 GitHub Actions 的排隊報錯問題。")
