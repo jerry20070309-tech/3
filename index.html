@@ -1,75 +1,62 @@
-import streamlit as st
-import pandas as pd
-import time
-from datetime import datetime
-from binance.client import Client
-from binance.exceptions import BinanceAPIException
+// --- 1. 這裡是你原本的策略核心參數 (由 Slider 控制) ---
+let FILTER = { SQZ: 0.012, POC: 0.011, SLP: -0.15, DRV: 90, MOM: 0.008 };
 
-# --- [A] 視覺配置 ---
-st.set_page_config(page_title="SNIPER RADAR V14.1", layout="wide")
-st.markdown("""<style>.stMetric { border: 1px solid #FFD700 !important; background-color: #0a0a0a !important; padding: 15px; border-radius: 8px; }</style>""", unsafe_allow_html=True)
+async function coreStrategyScanner() {
+    const res = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
+    const tickers = await res.json();
+    
+    tickers.forEach(t => {
+        const s = t.symbol;
+        if (!s.endsWith('USDT')) return;
 
-# --- [B] 側邊欄 ---
-with st.sidebar:
-    st.title("⚡ SNIPER RADAR")
-    symbol = st.text_input("🔍 搜尋監控幣對", value="BTCUSDT").upper()
-    whale_limit = st.number_input("💵 巨鯨門檻 (USDT)", value=50000)
-    api_key = st.text_input("Binance API Key", type="password")
-    api_secret = st.text_input("Binance API Secret", type="password")
-    is_active = st.toggle("🚀 START MONITORING")
-
-# --- [C] 數據引擎 (解決 image_d42b81.png 的 400 錯誤) ---
-def get_whale_data(client, target):
-    try:
-        # P2: 最近成交
-        trades = client.futures_recent_trades(symbol=target, limit=20)
-        # B2: 持倉數據 (修正：禁止 symbol=ALL)
-        oi = client.futures_open_interest(symbol=target)
-        # P3: 爆倉預警
-        liqs = client.futures_get_all_liquidation_orders(symbol=target, limit=1)
-        return trades, oi, liqs
-    except Exception as e:
-        return None, None, None
-
-# --- [D] 執行邏輯 ---
-if is_active and api_key and api_secret:
-    try:
-        client = Client(api_key, api_secret)
-        if 'prev_oi' not in st.session_state: st.session_state.prev_oi = 0.0
-        dashboard = st.empty()
+        // --- 2. 帶入你的評分公式邏輯 ---
+        const price = parseFloat(t.lastPrice);
+        const avgPrice = parseFloat(t.weightedAvgPrice);
+        const maSqz = (parseFloat(t.highPrice) - parseFloat(t.lowPrice)) / avgPrice;
+        const drvScore = Math.min(100, (Math.abs(parseFloat(t.priceChangePercent)) / (parseFloat(t.quoteVolume) / 1e8)) * 15);
         
-        while is_active:
-            start = time.perf_counter()
-            t_data, o_data, l_data = get_whale_data(client, symbol)
-            
-            if t_data and o_data:
-                price = float(t_data[-1]['price'])
-                curr_oi = float(o_data['openInterest'])
-                oi_change = curr_oi - st.session_state.prev_oi if st.session_state.prev_oi > 0 else 0
-                
-                # 週六判定
-                is_sat = datetime.utcnow().weekday() == 5
-                status_tag = "🟢 (週六模式)" if is_sat else "⚪ (一般監控)"
+        // 評分計算 (依照你提供的 V11.8 邏輯)
+        let score = 0;
+        if (maSqz <= FILTER.SQZ) score += 25;
+        if (Math.abs(parseFloat(t.priceChangePercent))/100 >= FILTER.POC) score += 25;
+        if (drvScore >= FILTER.DRV) score += 35;
+        // ... 其他 SLP 與 M7 判斷 ...
 
-                with dashboard.container():
-                    st.markdown(f"### 📊 {symbol} 實時戰報 {status_tag}")
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("即時市價", f"${price:,.2f}")
-                    c2.metric("持倉變動 (B2)", f"{curr_oi:,.0f}", f"{oi_change:,.2f}")
-                    vol = price * float(t_data[-1]['qty'])
-                    c3.metric("最新成交 (P2)", f"${vol:,.0f}")
-                    
-                    if vol >= whale_limit:
-                        if t_data[-1]['isBuyerMaker'] and oi_change < 0: st.error(f"🚨 巨鯨出貨！")
-                        elif not t_data[-1]['isBuyerMaker'] and oi_change > 0: st.success(f"💎 巨鯨建倉！")
-                    
-                    if is_sat: st.warning("提醒：週六數據將自動歸類至週六專屬庫。")
+        // --- 3. 關鍵橋接：評分過濾 ---
+        if (score >= 75) {
+            // 只有分數夠高，才丟進去監控器顯示「巨鯨、爆倉、掛單」
+            startWhaleSniper(s, score, price);
+        } else {
+            stopWhaleSniper(s);
+        }
+    });
+}
 
-                st.session_state.prev_oi = curr_oi
-            
-            # 控制頻率防止 IP 封鎖
-            time.sleep(max(0, 3.0 - (time.perf_counter() - start)))
-    except Exception as e:
-        st.error(f"系統錯誤: {e}")
-else:
-    st.info("💡 請配置 API Key 並啟動。這份代碼已修正所有非法 API 請求。")
+// --- 4. 深度數據監控模組 (顯示你要的數據) ---
+function startWhaleSniper(symbol, score, currentPrice) {
+    if (activeMonitors.has(symbol)) return; // 避免重複連線
+    
+    // 開啟 WebSocket 監控爆倉 (forceOrder) 與 聚合大單 (aggTrade)
+    const ws = new WebSocket(`wss://fstream.binance.com/ws/${symbol.toLowerCase()}@aggTrade/${symbol.toLowerCase()}@forceOrder`);
+    
+    ws.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        
+        // A. 偵測爆倉量
+        if (data.e === "forceOrder") {
+            const liqAmount = parseFloat(data.o.q) * parseFloat(data.o.p);
+            addLog(`💀 [爆倉警告] ${symbol} 價值: $${liqAmount.toFixed(0)}`);
+        }
+        
+        // B. 偵測巨鯨大單
+        if (data.e === "aggTrade") {
+            const tradeVal = parseFloat(data.q) * parseFloat(data.p);
+            if (tradeVal >= 50000) {
+                addLog(`🐋 [巨鯨成交] ${symbol} 金額: $${tradeVal.toFixed(0)}`);
+            }
+        }
+    };
+    
+    // C. 獲取巨大掛單價格位 (抓取 Order Book)
+    updateOrderWall(symbol);
+}
