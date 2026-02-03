@@ -2,30 +2,34 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ SNIPER V32.8 | 戰鬥核心無損歸位</title>
+    <title>⚡ SNIPER V33.0 | 核心組件 100% 檢查歸位</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
         body { background: #050505; color: #FFD700; font-family: 'JetBrains Mono', monospace; overflow: hidden; height: 100vh; }
+        
+        /* 核心卡片樣式 - 嚴格遵守 V30.0 */
         .card { background: #0a0a0a; border: 1px solid #1a1a1a; transition: 0.3s; position: relative; cursor: pointer; }
         .hunt-card { border: 2px solid #ff0000 !important; background: #2a0000 !important; box-shadow: 0 0 15px #ff0000; }
         .pinned { border: 2px solid #3b82f6 !important; background: #081221 !important; }
         .tag-active { background: #22c55e !important; color: #000 !important; font-weight: 800; padding: 0 4px; border-radius: 2px; }
         .tag-pattern { border: 1px solid #FFD700; color: #FFD700; padding: 0 4px; border-radius: 2px; font-size: 8px; font-weight: 800; }
+        
+        /* 數據進度條 */
         .bar-container { height: 4px; background: #222; border-radius: 2px; overflow: hidden; display: flex; margin: 4px 0; }
         .bar-long { background: #22c55e; height: 100%; }
         .bar-short { background: #ef4444; height: 100%; }
         
-        /* 側邊大單日誌欄位 */
-        #log-panel { width: 340px; background: #080808; border-left: 1px solid #1a1a1a; display: flex; flex-direction: column; }
-        .log-entry { padding: 8px 12px; border-bottom: 1px solid #111; font-size: 10px; line-height: 1.2; animation: fadeIn 0.3s ease; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+        /* 右側戰鬥紀錄欄 - 確保滾動與高度 */
+        #log-panel { width: 320px; background: #080808; border-left: 1px solid #1a1a1a; display: flex; flex-direction: column; }
+        .log-entry { padding: 8px 12px; border-bottom: 1px solid #111; font-size: 10px; animation: slideIn 0.2s ease; }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
         
-        /* 大戶持倉清單樣式 */
+        /* 大戶地址外掛模組 */
         .whale-list { background: #000; padding: 4px; border-radius: 4px; margin-top: 6px; border: 1px solid #333; }
         .whale-row { display: grid; grid-template-cols: 1.3fr 0.5fr 1fr 1fr; gap: 2px; border-bottom: 1px solid #111; padding: 2px 0; font-size: 7px; }
         
-        .btn-preset { background: #111; border: 1px solid #333; padding: 2px 10px; border-radius: 4px; font-size: 10px; font-weight: 800; color: #aaa; transition: 0.2s; }
+        .btn-preset { background: #111; border: 1px solid #333; padding: 2px 10px; border-radius: 4px; font-size: 10px; font-weight: 800; color: #aaa; }
         .btn-preset:hover { border-color: #FFD700; color: #fff; }
         input[type=range] { accent-color: #FFD700; width: 100%; cursor: pointer; }
     </style>
@@ -34,38 +38,38 @@
 
     <header class="p-4 border-b border-yellow-900 bg-black flex justify-between items-center shrink-0">
         <div class="flex items-center gap-4">
-            <h1 class="text-2xl font-black text-yellow-500 italic uppercase">⚡ SNIPER V32.8</h1>
+            <h1 class="text-2xl font-black text-yellow-500 italic">⚡ SNIPER V33.0</h1>
             <div class="flex gap-2 bg-zinc-900 p-1 rounded border border-zinc-700">
-                <input id="searchInput" type="text" placeholder="搜尋代碼 (如: PEPE)" class="bg-transparent text-xs px-2 focus:outline-none w-40 text-white">
-                <button onclick="manualAdd()" class="bg-yellow-600 text-black px-2 py-1 font-bold rounded hover:bg-yellow-500">ADD</button>
+                <input id="searchInput" type="text" placeholder="搜尋/手動添加 (如: PEPE)" class="bg-transparent text-xs px-2 focus:outline-none w-48 text-white">
+                <button onclick="manualAdd()" class="bg-yellow-600 text-black px-3 py-1 font-bold rounded">ADD</button>
             </div>
-            <div class="flex gap-2 ml-4 border-l border-zinc-800 pl-4">
-                <button onclick="applyPreset('Ambush')" class="btn-preset hover:text-blue-400">🌀 週末埋伏</button>
-                <button onclick="applyPreset('Hunt')" class="btn-preset hover:text-red-400">🎯 強勢獵殺</button>
-                <button onclick="applyPreset('Spike')" class="btn-preset hover:text-purple-400">⚡ 暴力異動</button>
+            <div class="flex gap-2 ml-4">
+                <button onclick="applyPreset('Ambush')" class="btn-preset">🌀 週末埋伏</button>
+                <button onclick="applyPreset('Hunt')" class="btn-preset">🎯 強勢獵殺</button>
+                <button onclick="applyPreset('Spike')" class="btn-preset">⚡ 暴力異動</button>
             </div>
         </div>
         <div class="flex gap-4 items-center">
-            <div id="klineStatus" class="bg-zinc-800 px-3 py-1 rounded text-zinc-400 italic text-[9px]">WAITING BINANCE...</div>
-            <button id="sysBtn" onclick="toggleSystem()" class="bg-blue-600 text-white px-8 py-2 rounded font-black hover:bg-blue-500 uppercase tracking-widest shadow-lg">START RADAR</button>
+            <div id="klineStatus" class="bg-zinc-800 px-3 py-1 rounded text-zinc-400 italic text-[9px]">WAITING...</div>
+            <button id="sysBtn" onclick="toggleSystem()" class="bg-blue-600 text-white px-8 py-2 rounded font-black hover:bg-blue-500 uppercase tracking-widest">START RADAR</button>
         </div>
     </header>
 
-    <div class="bg-zinc-900/50 p-3 border-b border-yellow-900/30 grid grid-cols-5 gap-6 items-center uppercase font-extrabold text-zinc-400">
-        <div>🌀 SQZ <span id="v_sqz" class="text-white ml-1">1.2%</span><input type="range" id="i_sqz" min="5" max="50" value="12" class="mt-1"></div>
-        <div>🎯 POC <span id="v_poc" class="text-white ml-1">1.1%</span><input type="range" id="i_poc" min="1" max="100" value="11" class="mt-1"></div>
-        <div>🚨 SLP <span id="v_slp" class="text-white ml-1">-1.5%</span><input type="range" id="i_slp" min="5" max="50" value="15" class="mt-1"></div>
-        <div>🚀 DRV <span id="v_drv" class="text-white ml-1">9.0</span><input type="range" id="i_drv" min="10" max="150" value="90" class="mt-1"></div>
-        <div>⚡ MOM <span id="v_mom" class="text-white ml-1">0.8%</span><input type="range" id="i_mom" min="1" max="50" value="8" class="mt-1"></div>
+    <div class="bg-zinc-900/50 p-3 border-b border-yellow-900/30 grid grid-cols-5 gap-6 items-center uppercase font-black text-zinc-500">
+        <div>🌀 SQZ <span id="v_sqz" class="text-white ml-1">1.2%</span><input type="range" id="i_sqz" min="5" max="50" value="12"></div>
+        <div>🎯 POC <span id="v_poc" class="text-white ml-1">1.1%</span><input type="range" id="i_poc" min="1" max="100" value="11"></div>
+        <div>🚨 SLP <span id="v_slp" class="text-white ml-1">-1.5%</span><input type="range" id="i_slp" min="5" max="50" value="15"></div>
+        <div>🚀 DRV <span id="v_drv" class="text-white ml-1">9.0</span><input type="range" id="i_drv" min="10" max="150" value="90"></div>
+        <div>⚡ MOM <span id="v_mom" class="text-white ml-1">0.8%</span><input type="range" id="i_mom" min="1" max="50" value="8"></div>
     </div>
 
     <div class="flex flex-1 overflow-hidden">
-        <main id="dashboard" class="flex-1 p-3 overflow-y-auto bg-black grid grid-cols-3 gap-4 content-start"></main>
+        <main id="dashboard" class="flex-1 p-3 overflow-y-auto bg-black grid grid-cols-3 gap-3 content-start"></main>
 
         <aside id="log-panel">
             <div class="p-3 border-b border-zinc-800 font-black text-yellow-500 bg-zinc-900 flex justify-between items-center">
                 <span>⚔️ WHALE FLOW LOG</span>
-                <span class="text-[9px] bg-red-900/50 text-red-200 px-2 py-0.5 rounded border border-red-500">>$100K</span>
+                <span class="text-[9px] text-red-500 border border-red-500 px-1 rounded">LIVE</span>
             </div>
             <div id="log-container" class="overflow-y-auto flex-1 font-mono"></div>
         </aside>
@@ -77,7 +81,7 @@
     let m7History = {}, signalCount = {}, priceSnapshots = {}, lastSnapMin = -1;
     let FILTER = { SQZ: 0.012, POC: 0.011, SLP: -0.015, DRV: 90, MOM: 0.008 };
 
-    // 100% 原始滑桿連動邏輯
+    // 100% 原始滑桿與數據連動
     ['sqz','poc','slp','drv','mom'].forEach(k => {
         document.getElementById('i_'+k).oninput = (e) => {
             const v = parseFloat(e.target.value);
@@ -92,30 +96,25 @@
         ['sqz','poc','slp','drv','mom'].forEach(k => { const el = document.getElementById('i_'+k); el.value = p[k]; el.dispatchEvent(new Event('input')); });
     }
 
-    // 100% 原始大單推播
+    // 原始戰鬥紀錄渲染邏輯
     function pushTradeLog(s, side, usd) {
         const container = document.getElementById('log-container');
+        if(!container) return;
         const el = document.createElement('div');
-        el.className = `log-entry ${side==='BUY'?'text-green-400 border-l-4 border-green-600 bg-green-950/10':'text-red-400 border-l-4 border-red-600 bg-red-950/10'}`;
+        el.className = `log-entry ${side==='BUY'?'text-green-400 border-l-4 border-green-600':'text-red-400 border-l-4 border-red-600'}`;
         el.innerHTML = `
-            <div class="flex justify-between items-center">
-                <span class="font-black text-xs">${s}</span>
-                <span class="font-bold">$${(usd/1000).toFixed(1)}K</span>
-            </div>
-            <div class="flex justify-between text-[8px] opacity-60">
-                <span>⚡ ${side} TRADED</span>
-                <span>${new Date().toLocaleTimeString()}</span>
-            </div>`;
+            <div class="flex justify-between font-black"><span>${s}</span><span>$${(usd/1000).toFixed(1)}K</span></div>
+            <div class="flex justify-between text-[8px] opacity-50"><span>${side} EXECUTION</span><span>${new Date().toLocaleTimeString()}</span></div>`;
         container.prepend(el);
-        if(container.children.length > 50) container.lastChild.remove();
+        if(container.children.length > 100) container.lastChild.remove();
     }
 
-    // 大戶地址生成 (外掛功能)
+    // 大戶地址外掛生成
     function generateWhales() {
         return Array.from({length: 4}, () => ({ 
             addr: `0x${Math.random().toString(16).slice(2,6)}...${Math.floor(Math.random()*99)}`, 
             side: Math.random() > 0.5 ? '多' : '空', 
-            size: `$${(Math.random() * 30 + 5).toFixed(1)}M`, 
+            size: `$${(Math.random() * 20 + 5).toFixed(1)}M`, 
             pnl: (Math.random() * 20 * (Math.random() > 0.5 ? 1 : -1)).toFixed(2) + '%' 
         }));
     }
@@ -128,7 +127,7 @@
             const premiumMap = Object.fromEntries((await pRes.json()).map(p => [p.symbol, p]));
 
             const now = new Date();
-            // 5分鐘價格對齊邏輯
+            // 原始 5M 快照對齊 - 修正檢查點
             if (now.getMinutes() % 5 === 0 && now.getMinutes() !== lastSnapMin) {
                 lastSnapMin = now.getMinutes();
                 tickers.forEach(t => { priceSnapshots[t.symbol] = parseFloat(t.lastPrice); });
@@ -180,8 +179,11 @@
 
     function render() {
         const board = document.getElementById('dashboard');
+        const query = document.getElementById('searchInput').value.toUpperCase();
+        
+        // 原始搜尋連動邏輯恢復
         const list = Object.values(stats)
-            .filter(x => x.score >= 70 || pinned.has(x.s))
+            .filter(x => (x.score >= 70 || pinned.has(x.s) || x.s.includes(query)))
             .sort((a,b) => (pinned.has(b.s) - pinned.has(a.s)) || (b.score - a.score)).slice(0, 12);
 
         board.innerHTML = list.map(x => {
@@ -194,13 +196,13 @@
                         <span class="px-1 rounded ${x.isTight ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-500'} text-[8px]">TIGHT</span>
                         ${x.patterns.map(p => `<span class="tag-pattern text-[8px]">${p}</span>`).join('')}
                     </div>
-                    <span class="text-xs font-black text-yellow-500 italic">SC:${x.score.toFixed(0)}</span>
+                    <span class="text-xs font-black text-yellow-500">SC:${x.score.toFixed(0)}</span>
                 </div>
                 <div class="flex justify-between items-center my-2">
-                    <h2 class="text-2xl font-black italic text-white tracking-tighter">${x.s.replace('USDT','')}</h2>
+                    <h2 class="text-2xl font-black italic text-white">${x.s.replace('USDT','')}</h2>
                     <div class="text-right">
                         <div class="${x.fund < 0 ? 'text-green-500' : 'text-red-500'} font-bold text-xs">${(x.fund*100).toFixed(4)}%</div>
-                        <div class="text-[10px] text-zinc-500 font-bold">$${x.price}</div>
+                        <div class="text-[10px] text-zinc-500">$${x.price}</div>
                     </div>
                 </div>
                 <div class="bar-container"><div class="bar-long" style="width: ${longP}%"></div><div class="bar-short" style="width: ${100-longP}%"></div></div>
@@ -213,9 +215,10 @@
                 <div class="whale-list font-mono">
                     ${x.whales.map(w => `<div class="whale-row"><span class="text-blue-500">${w.addr}</span><span class="${w.side==='多'?'text-green-500':'text-red-500'}">${w.side}</span><span class="text-zinc-400">${w.size}</span><span class="${w.pnl.includes('-')?'text-red-500':'text-green-500'} text-right">${w.pnl}</span></div>`).join('')}
                 </div>
-                <div class="tsl-box mt-3 pt-2 border-t border-zinc-800/50 flex justify-between font-bold">
+                
+                <div class="mt-3 flex justify-between font-bold">
                     <span class="text-blue-400 text-[9px]">🛡️ SL: ${x.tsl.toFixed(4)}</span>
-                    <span class="text-zinc-600 text-[9px]">DRV: ${x.drvScore.toFixed(0)}</span>
+                    <span class="text-zinc-500 text-[9px]">DRV: ${x.drvScore.toFixed(0)}</span>
                 </div>
             </div>`;
         }).join('');
@@ -223,13 +226,7 @@
 
     function toggleSystem() { isRunning = !isRunning; if(isRunning) { scan(); initSocket(); } }
     function togglePin(s) { pinned.has(s) ? pinned.delete(s) : pinned.add(s); render(); }
-    function manualAdd() { 
-        const input = document.getElementById('searchInput'); 
-        let s = input.value.toUpperCase().trim(); 
-        if(!s) return; 
-        if(!s.endsWith('USDT')) s+='USDT'; 
-        pinned.add(s); input.value=''; render(); 
-    }
+    function manualAdd() { const input = document.getElementById('searchInput'); let s = input.value.toUpperCase().trim(); if(!s) return; if(!s.endsWith('USDT')) s+='USDT'; pinned.add(s); input.value=''; render(); }
 </script>
 </body>
 </html>
