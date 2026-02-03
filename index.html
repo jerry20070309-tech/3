@@ -2,160 +2,208 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ SNIPER V20.0 | 軍事級全要素監控</title>
+    <title>⚡ SNIPER V23.0 | 封包多路複用旗艦版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
-        body { background: #000; color: #FFD700; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
-        .card { background: #0a0a0a; border: 1px solid #222; border-radius: 4px; padding: 10px; position: relative; }
-        .monster-boost { border: 2px solid #ef4444 !important; background: linear-gradient(180deg, #200, #000); }
-        .log-row { display: flex; justify-content: space-between; border-bottom: 1px solid #1a1a1a; padding: 1px 0; font-size: 8px; }
-        .btn-active { background: #eab308; color: #000; padding: 8px 20px; font-weight: 900; border-radius: 4px; cursor: pointer; }
-        .btn-stop { background: #ef4444; color: #fff; padding: 8px 20px; font-weight: 900; border-radius: 4px; cursor: pointer; }
-        .bar-wrap { background: #111; height: 3px; border-radius: 2px; margin-top: 4px; overflow: hidden; }
-        .bar-fill { background: #2563eb; height: 100%; transition: 0.4s; }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-thumb { background: #333; }
+        body { background: #050505; color: #FFD700; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
+        .card { background: #0a0a0a; border: 1px solid #1a1a1a; transition: 0.2s; border-radius: 8px; cursor: pointer; position: relative; }
+        .pinned { border: 2px solid #FFD700 !important; box-shadow: 0 0 15px rgba(255, 215, 0, 0.2); transform: scale(1.01); z-index: 5; }
+        .whale-flash { background: #450a0a !important; animation: flash 0.5s; }
+        @keyframes flash { from { background: #ef4444; } to { background: #450a0a; } }
+        .log-row { border-bottom: 1px solid #111; padding: 2px 0; display: flex; justify-content: space-between; font-size: 8px; }
+        #logBox::-webkit-scrollbar { width: 4px; }
+        #logBox::-webkit-scrollbar-thumb { background: #333; }
+        .metric-box { background: rgba(0,0,0,0.4); border: 1px solid #222; padding: 4px; border-radius: 4px; margin-top: 2px; }
     </style>
 </head>
-<body class="h-screen flex flex-col p-2 text-[9px]">
+<body class="h-screen flex flex-col p-2 text-[10px]">
 
-    <header class="p-2 border-b border-yellow-900/30 flex justify-between items-center bg-black">
-        <div class="flex items-center gap-4">
-            <h1 class="text-xl font-black text-yellow-500 italic">⚡ SNIPER V20.0</h1>
-            <div id="strategyLabel" class="text-blue-500 font-bold px-2 py-0.5 border border-blue-900 rounded uppercase">待命</div>
+    <header class="p-3 border-b border-yellow-900 flex justify-between items-center shrink-0 bg-black gap-4">
+        <div>
+            <h1 class="text-xl font-black text-yellow-500 italic uppercase">⚡ SNIPER V23.0</h1>
+            <div id="statusInfo" class="text-zinc-500 font-bold italic mt-1 uppercase text-[8px]">封包狀態：等待啟動</div>
         </div>
-        <div class="flex gap-2">
-            <button id="switchBtn" onclick="toggleSystem()" class="btn-active">ACTIVATE</button>
-            <div id="apiStatus" class="bg-zinc-900 px-3 py-1 rounded text-zinc-600 font-black border border-zinc-800 uppercase">OFFLINE</div>
+        <div class="flex-1 max-w-sm">
+            <input type="text" id="searchInput" placeholder="搜尋幣名..." class="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-1 text-white focus:outline-none focus:border-yellow-500 font-bold">
         </div>
+        <button id="sysBtn" onclick="toggleSystem()" class="bg-blue-600 text-white px-6 py-1 rounded font-black hover:bg-blue-500 uppercase">Start Stream</button>
     </header>
 
-    <div class="bg-zinc-900/20 p-2 grid grid-cols-5 gap-4 border-b border-yellow-900/10 uppercase font-bold text-zinc-600">
-        <div>🌀 SQZ 橫盤 <span id="v_sqz" class="text-yellow-500">1.2%</span><input type="range" id="i_sqz" min="5" max="50" value="12" class="w-full accent-yellow-500"></div>
-        <div>🎯 POC 突破 <span id="v_poc" class="text-green-500">1.1%</span><input type="range" id="i_poc" min="5" max="50" value="11" class="w-full accent-green-500"></div>
-        <div>🚨 SLP 乖離 <span id="v_slp" class="text-red-500">1.5%</span><input type="range" id="i_slp" min="5" max="50" value="15" class="w-full accent-red-500"></div>
-        <div>🚀 DRV 真空 <span id="v_drv" class="text-blue-500">90</span><input type="range" id="i_drv" min="10" max="150" value="90" class="w-full accent-blue-500"></div>
-        <div>⚡ MOM 動量 <span id="v_mom" class="text-orange-500">0.8%</span><input type="range" id="i_mom" min="1" max="50" value="8" class="w-full accent-orange-500"></div>
+    <div class="bg-zinc-900/50 p-2 border-b border-yellow-900/30 grid grid-cols-5 gap-4 items-center uppercase font-bold text-zinc-400">
+        <div class="space-y-1"><span>🌀 SQZ <span id="v_sqz" class="text-yellow-500">1.2%</span></span><input type="range" id="i_sqz" min="5" max="50" value="12" class="w-full"></div>
+        <div class="space-y-1"><span>🎯 POC <span id="v_poc" class="text-green-400">1.1%</span></span><input type="range" id="i_poc" min="1" max="100" value="11" class="w-full"></div>
+        <div class="space-y-1"><span>🚨 SLP <span id="v_slp" class="text-red-500">1.5%</span></span><input type="range" id="i_slp" min="5" max="50" value="15" class="w-full"></div>
+        <div class="space-y-1"><span>🚀 DRV <span id="v_drv" class="text-blue-400">90</span></span><input type="range" id="i_drv" min="10" max="150" value="90" class="w-full"></div>
+        <div class="space-y-1"><span>⚡ MOM <span id="v_mom" class="text-orange-500">0.8%</span></span><input type="range" id="i_mom" min="1" max="50" value="8" class="w-full"></div>
     </div>
 
-    <main id="dashboard" class="flex-1 overflow-y-auto grid grid-cols-4 gap-2 mt-2 p-1 content-start"></main>
+    <div class="flex flex-1 overflow-hidden gap-2 mt-2">
+        <main class="flex-1 overflow-y-auto p-2">
+            <div id="dashboard" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"></div>
+        </main>
+        <aside class="w-80 border-l border-yellow-900 bg-zinc-950 flex flex-col shrink-0">
+            <div class="p-2 border-b border-zinc-800 text-red-500 font-bold flex justify-between bg-black"><span>🛡️ 巨鯨成交封包</span></div>
+            <div id="logBox" class="flex-1 overflow-y-auto p-2 space-y-1 font-mono"></div>
+        </aside>
+    </div>
 
 <script>
-    let isRunning = false, stats = {}, activeWS = new Map();
+    let isRunning = false, stats = {}, socketBundle = null;
+    let pinnedSymbols = new Set(), currentSubscribed = [];
     let FILTER = { SQZ: 0.012, POC: 0.011, SLP: 0.015, DRV: 90, MOM: 0.008 };
-    let loopIdx = 0;
+    let searchFilter = "";
 
+    // [A] 初始化與封包連線
     function toggleSystem() {
         isRunning = !isRunning;
-        document.getElementById('switchBtn').innerText = isRunning ? "STOP" : "ACTIVATE";
-        document.getElementById('switchBtn').className = isRunning ? "btn-stop" : "btn-active";
-        document.getElementById('apiStatus').innerText = isRunning ? "Strict 3s" : "Offline";
-        if (isRunning) coreLoop();
+        const btn = document.getElementById('sysBtn');
+        btn.innerText = isRunning ? "Stop Stream" : "Start Stream";
+        btn.className = isRunning ? "bg-red-600 text-white px-6 py-1 rounded font-black uppercase" : "bg-blue-600 text-white px-6 py-1 rounded font-black uppercase";
+        
+        if (isRunning) {
+            initBundleConnection();
+            coreScan();
+        } else {
+            if(socketBundle) socketBundle.close();
+            document.getElementById('statusInfo').innerText = "封包狀態：連線關閉";
+        }
     }
 
-    async function coreLoop() {
+    function initBundleConnection() {
+        // 建立單一 WebSocket 通道 (多路複用)
+        socketBundle = new WebSocket("wss://fstream.binance.com/ws");
+        
+        socketBundle.onopen = () => {
+            document.getElementById('statusInfo').innerText = "封包狀態：通路建立，等待數據...";
+            // 訂閱全市場爆倉流
+            socketBundle.send(JSON.stringify({ method: "SUBSCRIBE", params: ["!forceOrder@arr"], id: 1 }));
+        };
+
+        socketBundle.onmessage = (e) => {
+            const d = JSON.parse(e.data);
+            if (d.e === "forceOrder") handleLiquidation(d.o);
+            if (d.e === "aggTrade") handleAggTrade(d);
+        };
+    }
+
+    // [B] 封包動態訂閱管理 (防止請求過多)
+    function updateSubscriptions(topSymbols) {
+        if (!socketBundle || socketBundle.readyState !== 1) return;
+
+        const newStreams = topSymbols.map(s => `${s.toLowerCase()}@aggTrade`);
+        const toUnsub = currentSubscribed.filter(s => !newStreams.includes(s));
+        const toSub = newStreams.filter(s => !currentSubscribed.includes(s));
+
+        if (toUnsub.length > 0) {
+            socketBundle.send(JSON.stringify({ method: "UNSUBSCRIBE", params: toUnsub, id: Date.now() }));
+        }
+        if (toSub.length > 0) {
+            socketBundle.send(JSON.stringify({ method: "SUBSCRIBE", params: toSub, id: Date.now() }));
+        }
+        currentSubscribed = newStreams;
+    }
+
+    async function coreScan() {
         if (!isRunning) return;
         try {
-            if (loopIdx === 0) {
-                const r = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
-                const data = await r.json();
-                data.forEach(t => {
-                    if (!t.symbol.endsWith('USDT')) return;
-                    const s = t.symbol, p = parseFloat(t.lastPrice);
-                    let sc = ((parseFloat(t.highPrice)-parseFloat(t.lowPrice))/p <= FILTER.SQZ) ? 50 : 0;
-                    if (!stats[s]) stats[s] = { s, score:0, price:p, funding:0, wallP:0, wallV:0, liqP:0, liqV:0, buyV:0, sellV:0, trades:[], vol:0 };
-                    stats[s].price = p; stats[s].score = sc; stats[s].vol = parseFloat(t.quoteVolume);
-                    if (isRunning && !activeWS.has(s)) setupWS(s);
-                });
-                loopIdx = 1;
-            } else if (loopIdx === 1) {
-                const r = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex');
-                const data = await r.json();
-                data.forEach(p => { if(stats[p.symbol]) stats[p.symbol].funding = p.lastFundingRate; });
-                loopIdx = 2;
-            } else {
-                // 補齊「最大掛單價/價值」
-                const topTargets = Object.values(stats).sort((a,b)=>b.score-a.score).slice(0, 10);
-                for (const target of topTargets) {
-                    const r = await fetch(`https://fapi.binance.com/fapi/v1/depth?symbol=${target.s}&limit=5`);
-                    const d = await r.json();
-                    if(d.asks && d.asks[0]) {
-                        stats[target.s].wallP = d.asks[0][0];
-                        stats[target.s].wallV = (parseFloat(d.asks[0][0]) * parseFloat(d.asks[0][1]));
-                    }
-                }
-                loopIdx = 0;
-            }
-            render();
-        } catch (e) { console.warn("API Skip - Cooling..."); }
-        setTimeout(coreLoop, 3000);
-    }
+            const res = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
+            const data = await res.json();
+            data.forEach(t => {
+                if (!t.symbol.endsWith('USDT')) return;
+                const s = t.symbol, p = parseFloat(t.lastPrice);
+                let sc = ((parseFloat(t.highPrice)-parseFloat(t.lowPrice))/p <= FILTER.SQZ) ? 50 : 0;
+                if (!stats[s]) stats[s] = { s, score:0, price:p, wallP:0, wallV:0, liqP:0, trades:[], buyV:0, sellV:0 };
+                stats[s] = { ...stats[s], price:p, score:sc };
+            });
 
-    function setupWS(s) {
-        if (activeWS.has(s) || activeWS.size > 60) return;
-        const ws = new WebSocket(`wss://fstream.binance.com/ws/${s.toLowerCase()}@aggTrade/${s.toLowerCase()}@forceOrder`);
-        ws.onmessage = (e) => {
-            const d = JSON.parse(e.data);
-            if (d.e === "forceOrder") {
-                const val = parseFloat(d.o.q) * parseFloat(d.o.p);
-                if (val > stats[s].liqV) { stats[s].liqV = val; stats[s].liqP = d.o.p; }
-            }
-            if (d.e === "aggTrade") {
-                const val = parseFloat(d.q) * parseFloat(d.p);
-                if (val > 50000) {
-                    const side = d.m ? "SELL" : "BUY";
-                    if (side === "BUY") stats[s].buyV += val; else stats[s].sellV += val;
-                    stats[s].trades.unshift({ t: new Date().toLocaleTimeString().slice(3), p: d.p, v: (val/1000).toFixed(1), s: side });
-                    if (stats[s].trades.length > 5) stats[s].trades.pop();
+            // 挑選前 30 名進行封包監控
+            const topList = Object.values(stats).sort((a,b)=>b.score-a.score).slice(0, 30).map(x=>x.s);
+            updateSubscriptions(topList);
+            
+            // 序列化抓取掛單牆價值
+            const wallTarget = topList.slice(0, 8);
+            for(let s of wallTarget) {
+                const depth = await fetch(`https://fapi.binance.com/fapi/v1/depth?symbol=${s}&limit=5`).then(r=>r.json());
+                if(depth.asks && depth.asks[0]) {
+                    stats[s].wallP = depth.asks[0][0];
+                    stats[s].wallV = parseFloat(depth.asks[0][0]) * parseFloat(depth.asks[0][1]);
                 }
             }
-        };
-        activeWS.set(s, ws);
+            renderUI();
+        } catch (e) {}
+        setTimeout(coreScan, 3000);
     }
 
-    function render() {
-        const board = document.getElementById('dashboard');
-        const list = Object.values(stats).sort((a,b) => b.score - a.score).slice(0, 24);
-        board.innerHTML = list.map(x => `
-            <div class="card ${x.score >= 50 ? 'border-yellow-600' : ''} ${x.vol > 1e9 ? 'monster-boost' : ''}">
-                <div class="flex justify-between font-black mb-1">
-                    <span class="text-white text-xs">${x.s}</span>
-                    <span class="text-yellow-500 text-xs">★${x.score}</span>
+    function handleAggTrade(d) {
+        const s = d.s; if(!stats[s]) return;
+        const val = parseFloat(d.q) * parseFloat(d.p);
+        if (val >= 50000) {
+            const side = d.m ? "SELL" : "BUY";
+            if(side==="BUY") stats[s].buyV += val; else stats[s].sellV += val;
+            stats[s].trades.unshift({ t: new Date().toLocaleTimeString().slice(3), p: d.p, v: (val/1000).toFixed(1), s: side });
+            if (stats[s].trades.length > 4) stats[s].trades.pop();
+            if (val >= 150000) addLog(`🐋 <span class="text-green-400 font-bold">巨鯨大單</span> ${s} | $${(val/1000).toFixed(1)}K @ $${d.p}`, "whale-flash");
+        }
+    }
+
+    function handleLiquidation(o) {
+        const s = o.s; if(!stats[s]) return;
+        const val = parseFloat(o.q) * parseFloat(o.p);
+        stats[s].liqP = o.p;
+        addLog(`💀 <span class="text-red-500 font-bold">大量爆倉</span> ${s} | $${(val/1000).toFixed(1)}K`);
+    }
+
+    function renderUI() {
+        const dashboard = document.getElementById('dashboard');
+        let list = Object.values(stats);
+        if (searchFilter) list = list.filter(x => x.s.includes(searchFilter));
+        list.sort((a, b) => (pinnedSymbols.has(b.s) - pinnedSymbols.has(a.s)) || (b.score - a.score));
+
+        dashboard.innerHTML = list.slice(0, 24).map(x => `
+            <div class="card p-3 ${pinnedSymbols.has(x.s) ? 'pinned' : ''}" onclick="togglePin('${x.s}')">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-lg font-black text-white">${x.s.replace('USDT','')} ${pinnedSymbols.has(x.s)?'📌':''}</span>
+                    <span class="text-yellow-500 font-black italic">★ ${x.score}</span>
                 </div>
-                <div class="text-2xl font-black text-white italic tracking-tighter mb-2">$${x.price}</div>
+                <div class="text-2xl font-black text-white mb-2 tracking-tighter">$${x.price.toLocaleString()}</div>
                 
-                <div class="grid grid-cols-2 gap-2 text-[7px] font-bold border-y border-zinc-900 py-1 mb-2 uppercase">
-                    <div class="text-blue-400">🔥 MAX WALL<br>$${parseFloat(x.wallP).toFixed(4)}<br><span class="text-zinc-600">$${(x.wallV/1000).toFixed(1)}K</span></div>
-                    <div class="text-red-500 text-right">💀 MAX LIQ<br>$${parseFloat(x.liqP).toFixed(4)}<br><span class="text-zinc-600">$${(x.liqV/1000).toFixed(1)}K</span></div>
+                <div class="metric-box flex justify-between uppercase">
+                    <span class="text-zinc-600 text-[7px]">最高掛單牆</span>
+                    <span class="text-blue-400 font-bold">$${parseFloat(x.wallP).toFixed(4)} <span class="text-zinc-400">($${(x.wallV/1000).toFixed(0)}K)</span></span>
+                </div>
+                <div class="metric-box flex justify-between uppercase">
+                    <span class="text-zinc-600 text-[7px]">最近爆倉價</span>
+                    <span class="text-red-500 font-bold">${x.liqP != 0 ? '$'+parseFloat(x.liqP).toFixed(4) : '--'}</span>
                 </div>
 
-                <div class="bg-black rounded p-1 mb-2">
-                    ${x.trades.map(t => `<div class="log-row ${t.s==='BUY'?'text-green-500':'text-orange-500'}"><span>${t.t}</span><span>$${parseFloat(t.p).toFixed(3)}</span><span>$${t.v}K</span></div>`).join('')}
+                <div class="bg-black/50 rounded mt-2 p-1">
+                    ${x.trades.map(t => `<div class="log-row ${t.s==='BUY'?'text-green-400':'text-orange-500'} font-bold"><span>${t.t}</span><span>$${parseFloat(t.p).toFixed(3)}</span><span>$${t.v}K</span></div>`).join('')}
                 </div>
-
-                <div class="flex justify-between items-center text-[8px] font-bold">
-                    <span class="${x.funding < 0 ? 'text-red-500' : 'text-green-500'}">F: ${(x.funding*100).toFixed(4)}%</span>
-                    <span class="text-blue-500 uppercase">Net: $${((x.buyV - x.sellV)/1000).toFixed(0)}K</span>
+                <div class="flex justify-between text-[7px] font-bold mt-1">
+                    <span class="text-blue-500 italic">NET: $${((x.buyV - x.sellV)/1000).toFixed(0)}K</span>
+                    <span class="text-zinc-600 uppercase">監控中</span>
                 </div>
-                <div class="bar-wrap"><div class="bar-fill" style="width: ${(x.buyV/(x.buyV+x.sellV)*100)||50}%"></div></div>
             </div>
         `).join('');
     }
 
-    const day = new Date().getDay();
-    if (day === 6) { 
-        document.getElementById('strategyLabel').innerText = "SATURDAY MODE"; 
-        FILTER.SQZ = 0.008; 
+    function togglePin(s) { pinnedSymbols.has(s) ? pinnedSymbols.delete(s) : pinnedSymbols.add(s); renderUI(); }
+    function addLog(msg, customClass = "") {
+        const box = document.getElementById('logBox');
+        const div = document.createElement('div');
+        div.className = `p-1 border-b border-zinc-900 ${customClass}`;
+        div.innerHTML = `<span class="text-zinc-600 mr-2">[${new Date().toLocaleTimeString()}]</span> ${msg}`;
+        box.prepend(div);
+        if (box.childNodes.length > 50) box.removeChild(box.lastChild);
     }
 
-    ['i_sqz', 'i_poc', 'i_slp', 'i_drv', 'i_mom'].forEach(id => {
-        document.getElementById(id).oninput = (e) => {
-            const k = id.split('_')[1].toUpperCase();
-            FILTER[k] = parseFloat(e.target.value)/1000;
-            document.getElementById('v_'+id.split('_')[1]).innerText = (e.target.value/10).toFixed(1) + '%';
-        };
-    });
+    // 搜尋與週六邏輯
+    document.getElementById('searchInput').oninput = (e) => { searchFilter = e.target.value.toUpperCase(); renderUI(); };
+    if (new Date().getDay() === 6) { 
+        FILTER.SQZ = 0.008; 
+        document.getElementById('statusInfo').innerText = "週六高勝率模式鎖定中"; 
+    }
 </script>
 </body>
 </html>
