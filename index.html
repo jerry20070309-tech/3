@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ SNIPER V32.1 | 核心無損+大戶地址版</title>
+    <title>⚡ SNIPER V32.2 | 完全復刻強化版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
@@ -11,33 +11,35 @@
         .hunt-card { border: 2px solid #ff0000; background: #2a0000 !important; box-shadow: 0 0 15px #ff0000; }
         .pinned { border: 2px solid #3b82f6 !important; background: #081221 !important; }
         .tag-active { background: #22c55e !important; color: #000 !important; font-weight: 800; }
-        .tag-pattern { border: 1px solid #FFD700; color: #FFD700; padding: 0 4px; border-radius: 2px; font-size: 8px; font-weight: 800; }
+        .tag-pattern { border: 1px solid #FFD700; color: #FFD700; padding: 0 4px; border-radius: 2px; font-size: 8px; }
         .tsl-box { border-top: 1px dashed #333; margin-top: 4px; padding-top: 4px; display: flex; justify-content: space-between; font-size: 7px; color: #888; }
-        
         .bar-container { height: 4px; background: #222; border-radius: 2px; overflow: hidden; display: flex; margin: 4px 0; }
         .bar-long { background: #22c55e; height: 100%; transition: 0.4s; }
         .bar-short { background: #ef4444; height: 100%; transition: 0.4s; }
-        
         .whale-list { background: #000; padding: 4px; border-radius: 4px; margin-top: 6px; border: 1px solid #1a1a1a; }
-        .whale-row { display: grid; grid-template-cols: 1.2fr 0.6fr 1fr 1fr; gap: 2px; border-bottom: 1px solid #111; padding: 2px 0; font-size: 7px; }
+        .whale-row { display: grid; grid-template-cols: 1.2fr 0.6fr 1fr 1.1fr; gap: 2px; border-bottom: 1px solid #111; padding: 2px 0; font-size: 7px; }
+        .btn-preset { background: #1a1a1a; border: 1px solid #333; padding: 2px 8px; border-radius: 4px; transition: 0.2s; font-size: 9px; }
+        input[type=range] { accent-color: #FFD700; }
     </style>
 </head>
 <body class="h-screen flex flex-col text-[10px]">
 
     <header class="p-4 border-b border-yellow-900 bg-black flex justify-between items-center shrink-0">
         <div class="flex items-center gap-4">
-            <h1 class="text-2xl font-black text-yellow-500 italic uppercase">⚡ Sniper V32.1</h1>
+            <h1 class="text-2xl font-black text-yellow-500 italic">⚡ SNIPER V32.2</h1>
             <div class="flex gap-2 bg-zinc-900 p-1 rounded border border-zinc-700">
                 <input id="searchInput" type="text" placeholder="搜尋幣名" class="bg-transparent text-xs px-2 focus:outline-none w-24 text-white">
                 <button onclick="manualAdd()" class="bg-yellow-600 text-black px-2 py-1 font-bold rounded">ADD</button>
             </div>
             <div class="flex gap-2 ml-4">
-                <button onclick="applyPreset('Hunt')" class="bg-red-900/30 text-red-500 px-3 py-1 rounded border border-red-500/50 font-bold">獵殺模式(70+)</button>
+                <button onclick="applyPreset('Ambush')" class="btn-preset text-blue-400">週末埋伏</button>
+                <button onclick="applyPreset('Hunt')" class="btn-preset text-red-400">強勢獵殺</button>
+                <button onclick="applyPreset('Spike')" class="btn-preset text-purple-400">暴力異動</button>
             </div>
         </div>
-        <div class="flex gap-4 items-center">
-            <div id="klineStatus" class="bg-zinc-800 px-3 py-1 rounded text-white italic text-[8px]">WAITING 5M...</div>
-            <button id="sysBtn" onclick="toggleSystem()" class="bg-blue-600 text-white px-8 py-2 rounded font-black hover:bg-blue-500 uppercase shadow-lg shadow-blue-900/20">START RADAR</button>
+        <div class="flex gap-4">
+            <div id="klineStatus" class="bg-zinc-800 px-3 py-1 rounded text-white flex items-center italic">等待5M對齊...</div>
+            <button id="sysBtn" onclick="toggleSystem()" class="bg-blue-600 text-white px-8 py-2 rounded font-black hover:bg-blue-500 uppercase">START RADAR</button>
         </div>
     </header>
 
@@ -58,13 +60,13 @@
     let activeWS = null;
     let FILTER = { SQZ: 0.012, POC: 0.011, SLP: -0.15, DRV: 90, MOM: 0.008 };
 
-    // 模擬大戶數據 (對標 Hyperliquid 截圖)
+    // 模擬大戶持倉 (對標截圖)
     function generateWhales() {
-        return Array.from({length: 5}, (_, i) => ({
+        return Array.from({length: 4}, (_, i) => ({
             addr: `0x${Math.random().toString(16).slice(2,6)}...${Math.floor(Math.random()*99)}`,
             side: Math.random() > 0.5 ? '多' : '空',
-            size: `$${(Math.random() * 50 + 10).toFixed(1)}M`,
-            pnl: (Math.random() * 30 * (Math.random() > 0.5 ? 1 : -1)).toFixed(2) + '%'
+            size: `$${(Math.random() * 30 + 5).toFixed(1)}M`,
+            pnl: (Math.random() * 40 * (Math.random() > 0.5 ? 1 : -1)).toFixed(2) + '%'
         }));
     }
 
@@ -126,7 +128,7 @@
                 if (maSqz <= FILTER.SQZ) score += 25;
                 if (drvScore >= FILTER.DRV) score += 35;
 
-                if (!stats[s]) stats[s] = { s, score:0, buyVol:0, sellVol:0, trades:0, bigMoney:0, whales: [] };
+                if (!stats[s]) stats[s] = { s, score:0, buyVol:0, sellVol:0, whales: [] };
                 stats[s] = { ...stats[s], price, fund, score, maSqz, drvScore, v5m, isAboveM7: signalCount[s]>=3, isTight: maSqz<0.003, patterns, tsl, ttp };
 
                 if (score >= 70 && stats[s].whales.length === 0) stats[s].whales = generateWhales();
@@ -140,13 +142,10 @@
         if(activeWS) activeWS.close();
         activeWS = new WebSocket("wss://fstream.binance.com/ws/!aggTrade@arr");
         activeWS.onmessage = (e) => {
-            const data = JSON.parse(e.data);
-            data.forEach(d => {
+            JSON.parse(e.data).forEach(d => {
                 if (stats[d.s]) {
                     const usd = parseFloat(d.q) * parseFloat(d.p);
-                    stats[d.s].trades++;
                     if (d.m) stats[d.s].sellVol += usd; else stats[d.s].buyVol += usd;
-                    if (usd >= 100000) stats[d.s].bigMoney += usd;
                 }
             });
         };
@@ -154,7 +153,6 @@
 
     function render() {
         const board = document.getElementById('dashboard');
-        // 嚴格執行：只要 70 分以上或釘選
         const list = Object.values(stats)
             .filter(x => x.score >= 70 || pinned.has(x.s))
             .sort((a,b) => (pinned.has(b.s) - pinned.has(a.s)) || (b.score - a.score))
@@ -187,7 +185,7 @@
                 </div>
 
                 <div class="whale-list font-mono text-[7px]">
-                    <div class="whale-row text-zinc-600 font-bold border-b border-zinc-900 pb-1">
+                    <div class="whale-row text-zinc-600 font-bold border-b border-zinc-900 pb-1 uppercase">
                         <span>用戶地址</span><span>向</span><span>倉位</span><span>未實現</span>
                     </div>
                     ${x.whales.map(w => `
@@ -208,9 +206,32 @@
         }).join('');
     }
 
+    // 補回：快速預設按鈕邏輯
+    function applyPreset(type) {
+        const presets = {
+            'Ambush': { sqz: 8, poc: 5, slp: 5, drv: 110, mom: 5 },
+            'Hunt': { sqz: 15, poc: 12, slp: 20, drv: 85, mom: 12 },
+            'Spike': { sqz: 25, poc: 20, slp: 35, drv: 60, mom: 25 }
+        };
+        const p = presets[type];
+        ['sqz','poc','slp','drv','mom'].forEach(k => {
+            const el = document.getElementById('i_'+k);
+            if(el) { el.value = p[k]; el.dispatchEvent(new Event('input')); }
+        });
+    }
+
     function toggleSystem() { isRunning = !isRunning; if(isRunning) { scan(); initSocket(); } }
     function togglePin(s) { pinned.has(s) ? pinned.delete(s) : pinned.add(s); render(); }
     function manualAdd() { const input = document.getElementById('searchInput'); let s = input.value.toUpperCase().trim(); if(!s) return; if(!s.endsWith('USDT')) s+='USDT'; pinned.add(s); input.value=''; render(); }
+
+    // 補回：滑桿監聽事件
+    ['sqz','poc','slp','drv','mom'].forEach(k => {
+        document.getElementById('i_'+k).oninput = (e) => {
+            const v = parseFloat(e.target.value);
+            FILTER[k.toUpperCase()] = v / (k==='slp'?100:1000);
+            document.getElementById('v_'+k).innerText = (k==='slp'?'-':'') + (v/10).toFixed(1) + (k==='drv'?'':'%');
+        }
+    });
 </script>
 </body>
 </html>
