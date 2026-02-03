@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ SNIPER V24.0 | 物理限頻封包版</title>
+    <title>⚡ SNIPER V27.0 | 核心全補完版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
@@ -11,20 +11,24 @@
         .tight-zone { border: 1px solid #eab308; background: linear-gradient(135deg, #0a0a00, #000); }
         .monster-boost { border: 2px solid #ef4444 !important; animation: pulse-red 1.5s infinite; }
         @keyframes pulse-red { 0% { box-shadow: 0 0 5px #450a0a; } 50% { box-shadow: 0 0 20px #ef4444; } 100% { box-shadow: 0 0 5px #450a0a; } }
+        /* [找回] 量價背離發光視覺 */
+        .divergence-up { color: #22c55e; text-shadow: 0 0 8px #22c55e; }
+        .divergence-down { color: #ef4444; text-shadow: 0 0 8px #ef4444; }
         .bar-container { background: #111; height: 3px; border-radius: 2px; margin: 4px 0; overflow: hidden; }
         .bar-power { height: 100%; background: #2563eb; transition: 0.5s ease-out; }
+        .trade-row { display: flex; justify-content: space-between; font-size: 7px; border-bottom: 1px solid #111; padding: 1px 0; }
     </style>
 </head>
 <body class="h-screen flex flex-col p-2 text-[10px]">
 
     <header class="p-3 border-b border-yellow-900/50 flex justify-between items-center">
         <div class="flex items-center gap-6">
-            <h1 class="text-2xl font-black text-yellow-500 italic tracking-tighter">⚡ SNIPER V24.0</h1>
+            <h1 class="text-2xl font-black text-yellow-500 italic tracking-tighter">⚡ SNIPER V27.0</h1>
             <div id="dayStrategy" class="px-3 py-1 bg-blue-900/20 border border-blue-500/50 text-blue-400 font-bold rounded">等待初始化...</div>
         </div>
         <div class="flex gap-4 items-center">
             <button id="switchBtn" onclick="toggleSystem()" class="bg-yellow-500 hover:bg-yellow-400 text-black px-6 py-2 font-black rounded transition-all">START RADAR</button>
-            <div id="apiStatus" class="font-bold text-zinc-600 border border-zinc-800 px-4 py-2 rounded uppercase text-[9px]">SYSTEM: IDLE</div>
+            <div id="apiStatus" class="font-bold text-zinc-600 border border-zinc-800 px-4 py-2 rounded">SYSTEM: IDLE</div>
         </div>
     </header>
 
@@ -41,18 +45,17 @@
         <main id="dashboard" class="flex-1 overflow-y-auto grid grid-cols-4 gap-3 p-1 content-start"></main>
         <aside class="w-80 bg-black border-l border-yellow-900/30 flex flex-col">
             <div class="p-2 border-b border-zinc-800 text-[10px] font-black italic flex justify-between uppercase">
-                <span class="text-red-600">🛡️ PACKET SURVEILLANCE</span>
-                <span id="pwrStatus" class="text-zinc-700 font-mono">STEP: 0</span>
+                <span class="text-red-600">🛡️ WHALE SURVEILLANCE</span>
+                <span id="pwrStatus" class="text-zinc-700 font-mono italic">PULSE: 3.0s</span>
             </div>
             <div id="logBox" class="flex-1 overflow-y-auto p-2 space-y-1 font-mono text-[9px]"></div>
         </aside>
     </div>
 
 <script>
-    let isRunning = false, stats = {}, activeWS = null;
+    let isRunning = false, stats = {}, activeWS = new Map();
     let FILTER = { SQZ: 0.012, POC: 0.011, SLP: 0.015, DRV: 90, MOM: 0.008, RSI: 70 };
-    let step = 0; // 核心狀態機步進
-    let currentSubscribed = []; // 封包訂閱追蹤
+    let step = 0;
 
     function toggleSystem() {
         isRunning = !isRunning;
@@ -60,46 +63,14 @@
         b.innerText = isRunning ? "STOP RADAR" : "START RADAR";
         b.style.backgroundColor = isRunning ? "#ef4444" : "#eab308";
         document.getElementById('apiStatus').innerText = isRunning ? "SYSTEM: ACTIVE" : "SYSTEM: IDLE";
-        if (isRunning) {
-            initPacketWS();
-            masterClock();
-        } else {
-            if(activeWS) activeWS.close();
-        }
+        if (isRunning) masterClock();
     }
 
-    // [A] 核心 WebSocket 封包連線：僅建立一個，用於訂閱高分幣
-    function initPacketWS() {
-        activeWS = new WebSocket("wss://fstream.binance.com/ws");
-        activeWS.onmessage = (e) => {
-            const d = JSON.parse(e.data);
-            if (d.e === "aggTrade") {
-                const usd = parseFloat(d.q) * parseFloat(d.p);
-                if (usd > 50000) {
-                    const side = d.m ? "SELL" : "BUY";
-                    if (!stats[d.s]) return;
-                    if (side === "BUY") stats[d.s].buyV += usd; else stats[d.s].sellV += usd;
-                    addLog(`🐋 [WHALE] ${d.s} $${(usd/1000).toFixed(0)}K | ${side}`, d.m ? "text-orange-500" : "text-green-500 border-l border-green-500 pl-1");
-                }
-            }
-            if (d.e === "forceOrder") {
-                const val = (parseFloat(d.o.q) * parseFloat(d.o.p) / 1000).toFixed(1);
-                if (stats[d.o.s]) stats[d.o.s].liq += parseFloat(val);
-                addLog(`💀 [LIQ] ${d.o.s} $${val}K | ${d.o.S}`, "text-red-500 font-bold border-l border-red-500 pl-1");
-            }
-        };
-        activeWS.onopen = () => {
-            activeWS.send(JSON.stringify({ method: "SUBSCRIBE", params: ["!forceOrder@arr"], id: 1 }));
-        };
-    }
-
-    // [B] 物理限頻脈衝 (遵循 V18.0 請求方式)
+    // [核心] 物理限頻三段式脈衝
     async function masterClock() {
         if (!isRunning) return;
-        document.getElementById('pwrStatus').innerText = `STEP: ${step}`;
         try {
             if (step === 0) {
-                // 步驟 0: 獲取全場 24h 行情 (頻率: 3s 周期中的第 1 秒)
                 const r = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
                 const data = await r.json();
                 data.forEach(t => {
@@ -108,44 +79,53 @@
                     const chg = parseFloat(t.priceChangePercent);
                     let score = ((h-l)/p <= FILTER.SQZ) ? 40 : 0;
                     if (chg > 5) score += 30;
-                    if (!stats[s]) stats[s] = { s, score:0, price:p, funding:0, bid:0, ask:0, liq:0, buyV:0, sellV:0, vol:parseFloat(t.quoteVolume), oldP:p };
+                    if (!stats[s]) stats[s] = { s, score:0, price:p, oldP:p, funding:0, bid:0, ask:0, liq:0, buyV:0, sellV:0, vol:parseFloat(t.quoteVolume), trades:[] };
                     stats[s] = { ...stats[s], price:p, score, vol:parseFloat(t.quoteVolume), chg, isVac: (h-p)/p < 0.003 };
                 });
                 step = 1;
             } else if (step === 1) {
-                // 步驟 1: 獲取費率 (頻率: 3s 周期中的第 2 秒)
                 const r = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex');
                 const data = await r.json();
                 data.forEach(p => { if(stats[p.symbol]) stats[p.symbol].funding = p.lastFundingRate; });
                 step = 2;
             } else {
-                // 步驟 2: 深度掃描與「封包動態切換」 (頻率: 3s 周期中的第 3 秒)
-                const sorted = Object.values(stats).sort((a,b) => b.score - a.score);
-                const topTargets = sorted.slice(0, 10); // 只針對前 10 名
-                
-                // 動態封包訂閱管理
-                if (activeWS && activeWS.readyState === 1) {
-                    const newStreams = topTargets.map(x => `${x.s.toLowerCase()}@aggTrade`);
-                    const toUnsub = currentSubscribed.filter(s => !newStreams.includes(s));
-                    const toSub = newStreams.filter(s => !currentSubscribed.includes(s));
-                    if (toUnsub.length) activeWS.send(JSON.stringify({ method: "UNSUBSCRIBE", params: toUnsub, id: 2 }));
-                    if (toSub.length) activeWS.send(JSON.stringify({ method: "SUBSCRIBE", params: toSub, id: 3 }));
-                    currentSubscribed = newStreams;
-                }
-
-                // 抓取第一名的深度 (物理限頻請求)
-                const top = topTargets[0];
+                const top = Object.values(stats).sort((a,b) => b.score - a.score)[0];
                 if (top) {
-                    const r = await fetch(`https://fapi.binance.com/fapi/v1/depth?symbol=${top.s}&limit=10`);
+                    const r = await fetch(`https://fapi.binance.com/fapi/v1/depth?symbol=${top.s}&limit=20`);
                     const d = await r.json();
                     stats[top.s].ask = d.asks.reduce((a,b)=>a+parseFloat(b[1]),0);
                     stats[top.s].bid = d.bids.reduce((a,b)=>a+parseFloat(b[1]),0);
+                    setupWS(top.s);
                 }
                 step = 0;
             }
             render();
-        } catch (e) { console.warn("API 物理保護啟動 - 延遲中"); }
-        setTimeout(masterClock, 1000); // 每一秒切換一次狀態，完整週期三秒
+        } catch (e) { console.warn("API Busy - Syncing..."); }
+        setTimeout(masterClock, 1000); 
+    }
+
+    function setupWS(s) {
+        if (activeWS.has(s)) return;
+        const ws = new WebSocket(`wss://fstream.binance.com/ws/${s.toLowerCase()}@aggTrade/${s.toLowerCase()}@forceOrder`);
+        ws.onmessage = (e) => {
+            const d = JSON.parse(e.data);
+            if (d.e === "forceOrder") {
+                const val = (parseFloat(d.o.q) * parseFloat(d.o.p) / 1000).toFixed(1);
+                stats[s].liq += parseFloat(val);
+                addLog(`💀 [LIQ] ${s} $${val}K`, "text-red-500 font-bold");
+            }
+            if (d.e === "aggTrade") {
+                const usd = parseFloat(d.q) * parseFloat(d.p);
+                if (usd > 50000) {
+                    const side = d.m ? "SELL" : "BUY";
+                    if (side === "BUY") stats[s].buyV += usd; else stats[s].sellV += usd;
+                    stats[s].trades.unshift({ t: new Date().toLocaleTimeString().slice(3), p: d.p, v: (usd/1000).toFixed(0), s: side });
+                    if (stats[s].trades.length > 5) stats[s].trades.pop();
+                    addLog(`🐋 [WHALE] ${s} $${(usd/1000).toFixed(0)}K | ${side}`, d.m ? "text-orange-500" : "text-green-500 border-l border-green-500 pl-1");
+                }
+            }
+        };
+        activeWS.set(s, ws);
     }
 
     function render() {
@@ -154,10 +134,11 @@
         board.innerHTML = sorted.map(x => {
             const flow = (x.buyV - x.sellV)/1000;
             const power = (x.bid / (x.bid + x.ask) * 100) || 50;
+            const divClass = (x.price > x.oldP && flow < 0) ? 'divergence-down' : (x.price < x.oldP && flow > 0 ? 'divergence-up' : 'text-zinc-400');
             return `
             <div class="card ${x.score >= 50 ? 'tight-zone' : ''} ${x.vol > 1e9 ? 'monster-boost' : ''}">
                 <div class="flex justify-between font-black text-[11px]">
-                    <span class="text-white uppercase">${x.s.replace('USDT','')}</span>
+                    <span class="text-white">${x.s}</span>
                     <span class="text-yellow-500">★${x.score}</span>
                 </div>
                 <div class="text-2xl font-black text-white py-1 italic tracking-tighter">$${x.price}</div>
@@ -167,22 +148,32 @@
                 </div>
                 <div class="bar-container"><div class="bar-power" style="width: ${power}%"></div></div>
                 <div class="flex justify-between text-[8px] font-bold mt-1 uppercase">
-                    <span class="text-blue-400">NET: $${flow.toFixed(0)}K</span>
+                    <span class="${divClass}">NET: $${flow.toFixed(0)}K</span>
                     <span class="text-zinc-600">LIQ: $${x.liq.toFixed(0)}K</span>
                 </div>
-                ${x.isVac ? '<div class="absolute bottom-1 right-1 text-[7px] bg-blue-600 text-white px-1 rounded font-bold uppercase">Vacuum</div>' : ''}
+                <div class="bg-black/60 rounded mt-1 p-1 min-h-[42px]">
+                    ${x.trades.map(t => `<div class="trade-row ${t.s==='BUY'?'text-green-500':'text-orange-500'}"><span>${t.t}</span><span>$${t.p}</span><span>$${t.v}K</span></div>`).join('')}
+                </div>
+                ${x.isVac ? '<div class="absolute bottom-1 right-1 text-[7px] bg-blue-600 text-white px-1 rounded font-bold">VACUUM</div>' : ''}
             </div>`;
         }).join('');
     }
 
-    // 2026-01-24 指令與滑桿
+    // [找回] 滑桿調節與週六指令
+    const sIds = ['i_sqz', 'i_poc', 'i_slp', 'i_drv', 'i_mom', 'i_rsi'];
+    sIds.forEach(id => {
+        document.getElementById(id).oninput = (e) => {
+            const key = id.split('_')[1].toUpperCase();
+            FILTER[key] = parseFloat(e.target.value) / (key === 'RSI' ? 1 : 1000);
+            document.getElementById('v_'+id.split('_')[1]).innerText = (key==='RSI'?e.target.value:(e.target.value/10).toFixed(1) + '%');
+            render();
+        };
+    });
+
     const day = new Date().getDay();
-    const notice = document.getElementById('dayStrategy');
     if (day === 6) { 
-        notice.innerText = "📅 週六模式：鎖定週六期數計算"; 
+        document.getElementById('dayStrategy').innerText = "📅 週六模式：數據隔離"; 
         FILTER.SQZ = 0.008; 
-    } else { 
-        notice.innerText = "📅 常規策略掃描中"; 
     }
 
     function addLog(m, c) {
@@ -191,15 +182,6 @@
         d.innerHTML = `[${new Date().toLocaleTimeString()}] ${m}`;
         b.prepend(d); if(b.childNodes.length > 50) b.removeChild(b.lastChild);
     }
-
-    // 滑桿調節邏輯 (遵循 V18)
-    ['i_sqz', 'i_poc', 'i_slp', 'i_drv', 'i_mom', 'i_rsi'].forEach(id => {
-        document.getElementById(id).oninput = (e) => {
-            const k = id.split('_')[1].toUpperCase();
-            FILTER[k] = parseFloat(e.target.value) / (k === 'RSI' ? 1 : 1000);
-            document.getElementById('v_'+id.split('_')[1]).innerText = (k==='RSI'?e.target.value:(e.target.value/10).toFixed(1) + '%');
-        };
-    });
 </script>
 </body>
 </html>
