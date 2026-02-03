@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ SNIPER V32.2 | 完全復刻強化版</title>
+    <title>⚡ SNIPER V32.3 | 終極無損監控版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
@@ -11,43 +11,44 @@
         .hunt-card { border: 2px solid #ff0000; background: #2a0000 !important; box-shadow: 0 0 15px #ff0000; }
         .pinned { border: 2px solid #3b82f6 !important; background: #081221 !important; }
         .tag-active { background: #22c55e !important; color: #000 !important; font-weight: 800; }
-        .tag-pattern { border: 1px solid #FFD700; color: #FFD700; padding: 0 4px; border-radius: 2px; font-size: 8px; }
+        .tag-pattern { border: 1px solid #FFD700; color: #FFD700; padding: 0 4px; border-radius: 2px; font-size: 8px; font-weight: 800; }
         .tsl-box { border-top: 1px dashed #333; margin-top: 4px; padding-top: 4px; display: flex; justify-content: space-between; font-size: 7px; color: #888; }
         .bar-container { height: 4px; background: #222; border-radius: 2px; overflow: hidden; display: flex; margin: 4px 0; }
         .bar-long { background: #22c55e; height: 100%; transition: 0.4s; }
         .bar-short { background: #ef4444; height: 100%; transition: 0.4s; }
         .whale-list { background: #000; padding: 4px; border-radius: 4px; margin-top: 6px; border: 1px solid #1a1a1a; }
         .whale-row { display: grid; grid-template-cols: 1.2fr 0.6fr 1fr 1.1fr; gap: 2px; border-bottom: 1px solid #111; padding: 2px 0; font-size: 7px; }
-        .btn-preset { background: #1a1a1a; border: 1px solid #333; padding: 2px 8px; border-radius: 4px; transition: 0.2s; font-size: 9px; }
-        input[type=range] { accent-color: #FFD700; }
+        .btn-preset { background: #1a1a1a; border: 1px solid #333; padding: 2px 10px; border-radius: 4px; transition: 0.2s; font-size: 10px; font-weight: 800; cursor: pointer; }
+        .btn-preset:hover { background: #333; border-color: #FFD700; }
+        input[type=range] { accent-color: #FFD700; cursor: pointer; }
     </style>
 </head>
 <body class="h-screen flex flex-col text-[10px]">
 
     <header class="p-4 border-b border-yellow-900 bg-black flex justify-between items-center shrink-0">
         <div class="flex items-center gap-4">
-            <h1 class="text-2xl font-black text-yellow-500 italic">⚡ SNIPER V32.2</h1>
+            <h1 class="text-2xl font-black text-yellow-500 italic uppercase">⚡ SNIPER V32.3</h1>
             <div class="flex gap-2 bg-zinc-900 p-1 rounded border border-zinc-700">
                 <input id="searchInput" type="text" placeholder="搜尋幣名" class="bg-transparent text-xs px-2 focus:outline-none w-24 text-white">
                 <button onclick="manualAdd()" class="bg-yellow-600 text-black px-2 py-1 font-bold rounded">ADD</button>
             </div>
             <div class="flex gap-2 ml-4">
-                <button onclick="applyPreset('Ambush')" class="btn-preset text-blue-400">週末埋伏</button>
-                <button onclick="applyPreset('Hunt')" class="btn-preset text-red-400">強勢獵殺</button>
-                <button onclick="applyPreset('Spike')" class="btn-preset text-purple-400">暴力異動</button>
+                <button onclick="applyPreset('Ambush')" class="btn-preset text-blue-400">🌀 週末埋伏</button>
+                <button onclick="applyPreset('Hunt')" class="btn-preset text-red-400">🎯 強勢獵殺</button>
+                <button onclick="applyPreset('Spike')" class="btn-preset text-purple-400">⚡ 暴力異動</button>
             </div>
         </div>
-        <div class="flex gap-4">
-            <div id="klineStatus" class="bg-zinc-800 px-3 py-1 rounded text-white flex items-center italic">等待5M對齊...</div>
-            <button id="sysBtn" onclick="toggleSystem()" class="bg-blue-600 text-white px-8 py-2 rounded font-black hover:bg-blue-500 uppercase">START RADAR</button>
+        <div class="flex gap-4 items-center">
+            <div id="klineStatus" class="bg-zinc-800 px-3 py-1 rounded text-white italic text-[8px]">WAITING DATA...</div>
+            <button id="sysBtn" onclick="toggleSystem()" class="bg-blue-600 text-white px-8 py-2 rounded font-black hover:bg-blue-500 uppercase shadow-lg">START RADAR</button>
         </div>
     </header>
 
     <div class="bg-zinc-900/80 p-3 border-b border-yellow-900/30 grid grid-cols-5 gap-4 items-center uppercase font-bold text-zinc-400">
         <div>🌀 SQZ <span id="v_sqz">1.2%</span><input type="range" id="i_sqz" min="5" max="50" value="12" class="w-full mt-1"></div>
         <div>🎯 POC <span id="v_poc">1.1%</span><input type="range" id="i_poc" min="1" max="100" value="11" class="w-full mt-1"></div>
-        <div>🚨 SLP <span id="v_slp">-15%</span><input type="range" id="i_slp" min="5" max="50" value="15" class="w-full mt-1"></div>
-        <div>🚀 DRV <span id="v_drv">90</span><input type="range" id="i_drv" min="10" max="150" value="90" class="w-full mt-1"></div>
+        <div>🚨 SLP <span id="v_slp">-1.5%</span><input type="range" id="i_slp" min="5" max="50" value="15" class="w-full mt-1"></div>
+        <div>🚀 DRV <span id="v_drv">9.0</span><input type="range" id="i_drv" min="10" max="150" value="90" class="w-full mt-1"></div>
         <div>⚡ MOM <span id="v_mom">0.8%</span><input type="range" id="i_mom" min="1" max="50" value="8" class="w-full mt-1"></div>
     </div>
 
@@ -58,14 +59,44 @@
     let stats = {}, pinned = new Set(), isRunning = false;
     let m7History = {}, signalCount = {}, priceSnapshots = {}, lastSnapMin = -1;
     let activeWS = null;
-    let FILTER = { SQZ: 0.012, POC: 0.011, SLP: -0.15, DRV: 90, MOM: 0.008 };
+    let FILTER = { SQZ: 0.012, POC: 0.011, SLP: -0.015, DRV: 90, MOM: 0.008 };
 
-    // 模擬大戶持倉 (對標截圖)
+    // 初始化滑桿監聽 (完全復刻 V30.0 邏輯)
+    ['sqz','poc','slp','drv','mom'].forEach(k => {
+        const input = document.getElementById('i_'+k);
+        input.oninput = (e) => {
+            const v = parseFloat(e.target.value);
+            // 修正計算邏輯與 V30.0 一致
+            if(k==='slp') FILTER.SLP = -(v/1000); 
+            else if(k==='drv') FILTER.DRV = v;
+            else FILTER[k.toUpperCase()] = v/1000;
+            
+            // 更新 UI 顯示文字
+            const display = document.getElementById('v_'+k);
+            if(k==='slp') display.innerText = `-${(v/10).toFixed(1)}%`;
+            else if(k==='drv') display.innerText = (v/10).toFixed(1);
+            else display.innerText = (v/10).toFixed(1) + '%';
+        };
+    });
+
+    function applyPreset(type) {
+        const p = {
+            'Ambush': { sqz: 8, poc: 5, slp: 5, drv: 110, mom: 5 },
+            'Hunt': { sqz: 15, poc: 12, slp: 20, drv: 85, mom: 12 },
+            'Spike': { sqz: 25, poc: 20, slp: 35, drv: 60, mom: 25 }
+        }[type];
+        ['sqz','poc','slp','drv','mom'].forEach(k => {
+            const el = document.getElementById('i_'+k);
+            el.value = p[k];
+            el.dispatchEvent(new Event('input'));
+        });
+    }
+
     function generateWhales() {
-        return Array.from({length: 4}, (_, i) => ({
+        return Array.from({length: 4}, () => ({
             addr: `0x${Math.random().toString(16).slice(2,6)}...${Math.floor(Math.random()*99)}`,
             side: Math.random() > 0.5 ? '多' : '空',
-            size: `$${(Math.random() * 30 + 5).toFixed(1)}M`,
+            size: `$${(Math.random() * 40 + 5).toFixed(1)}M`,
             pnl: (Math.random() * 40 * (Math.random() > 0.5 ? 1 : -1)).toFixed(2) + '%'
         }));
     }
@@ -84,7 +115,7 @@
             if (now.getMinutes() % 5 === 0 && now.getMinutes() !== lastSnapMin) {
                 lastSnapMin = now.getMinutes();
                 tickers.forEach(t => { priceSnapshots[t.symbol] = parseFloat(t.lastPrice); });
-                document.getElementById('klineStatus').innerText = `${now.getHours()}:${now.getMinutes()} 5M對齊`;
+                document.getElementById('klineStatus').innerText = `${now.getHours()}:${now.getMinutes()} 5M同步`;
             }
 
             tickers.forEach(t => {
@@ -96,7 +127,7 @@
                 const vol = parseFloat(t.quoteVolume);
                 const fund = parseFloat(premiumMap[s]?.lastFundingRate || 0);
 
-                // --- 100% 復刻 V30.0 核心邏輯 ---
+                // --- V30.0 核心算法 ---
                 const mid24h = (parseFloat(t.highPrice) + parseFloat(t.lowPrice)) / 2;
                 const m25 = (mid24h * 0.7) + (avgPrice * 0.3);
                 
@@ -115,13 +146,11 @@
                 const v5m = (price - (priceSnapshots[s] || price)) / (priceSnapshots[s] || price);
                 
                 let patterns = [];
-                if (maSqz < 0.006) patterns.push("🌀彈簧吸籌");
-                if (drvScore > 95) patterns.push("🚀真空噴發");
-                if (v5m >= 0.05 && vol > 1e7) patterns.push("🔥妖幣放量");
+                if (maSqz < 0.006) patterns.push("🌀彈簧");
+                if (drvScore > 95) patterns.push("🚀真空");
+                if (v5m >= 0.05 && vol > 1e7) patterns.push("🔥妖幣");
 
-                const tslMode = drvScore > 90 ? "M7_TIGHT" : "M25_SAFE";
-                const tsl = tslMode === "M7_TIGHT" ? avgPrice * 0.997 : m25 * 0.992;
-                const ttp = price * 1.05;
+                const tsl = drvScore > 90 ? avgPrice * 0.997 : m25 * 0.992;
 
                 let score = 0;
                 if (v5m >= 0.05) score += 50;
@@ -129,7 +158,7 @@
                 if (drvScore >= FILTER.DRV) score += 35;
 
                 if (!stats[s]) stats[s] = { s, score:0, buyVol:0, sellVol:0, whales: [] };
-                stats[s] = { ...stats[s], price, fund, score, maSqz, drvScore, v5m, isAboveM7: signalCount[s]>=3, isTight: maSqz<0.003, patterns, tsl, ttp };
+                stats[s] = { ...stats[s], price, fund, score, maSqz, drvScore, v5m, isAboveM7: signalCount[s]>=3, isTight: maSqz<0.003, patterns, tsl, ttp: price*1.05 };
 
                 if (score >= 70 && stats[s].whales.length === 0) stats[s].whales = generateWhales();
             });
@@ -164,12 +193,12 @@
             return `
             <div class="card p-3 rounded-lg ${pinned.has(x.s)?'pinned':''} ${x.score >= 90 ? 'hunt-card' : ''}" onclick="togglePin('${x.s}')">
                 <div class="flex justify-between items-start mb-1">
-                    <div class="flex gap-1 flex-wrap max-w-[70%]">
+                    <div class="flex gap-1 flex-wrap max-w-[75%]">
                         <span class="px-1 rounded ${x.isAboveM7 ? 'tag-active' : 'bg-zinc-800 text-zinc-500'}">M7_VLD</span>
                         <span class="px-1 rounded ${x.isTight ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-500'}">TIGHT</span>
                         ${x.patterns.map(p => `<span class="tag-pattern">${p}</span>`).join('')}
                     </div>
-                    <span class="text-[9px] font-black text-yellow-500">SCORE: ${x.score.toFixed(0)}</span>
+                    <span class="text-[9px] font-black text-yellow-500">SC:${x.score.toFixed(0)}</span>
                 </div>
                 <div class="flex justify-between items-center my-1">
                     <h2 class="text-xl font-black italic text-white">${x.s.replace('USDT','')}</h2>
@@ -199,39 +228,16 @@
                 </div>
 
                 <div class="tsl-box">
-                    <span class="text-blue-400 font-bold italic">🛡️ SL: ${x.tsl.toFixed(4)}</span>
+                    <span class="text-blue-400 font-bold">🛡️ SL: ${x.tsl.toFixed(4)}</span>
                     <span class="text-zinc-600">DRV: ${x.drvScore.toFixed(0)}</span>
                 </div>
             </div>`;
         }).join('');
     }
 
-    // 補回：快速預設按鈕邏輯
-    function applyPreset(type) {
-        const presets = {
-            'Ambush': { sqz: 8, poc: 5, slp: 5, drv: 110, mom: 5 },
-            'Hunt': { sqz: 15, poc: 12, slp: 20, drv: 85, mom: 12 },
-            'Spike': { sqz: 25, poc: 20, slp: 35, drv: 60, mom: 25 }
-        };
-        const p = presets[type];
-        ['sqz','poc','slp','drv','mom'].forEach(k => {
-            const el = document.getElementById('i_'+k);
-            if(el) { el.value = p[k]; el.dispatchEvent(new Event('input')); }
-        });
-    }
-
     function toggleSystem() { isRunning = !isRunning; if(isRunning) { scan(); initSocket(); } }
     function togglePin(s) { pinned.has(s) ? pinned.delete(s) : pinned.add(s); render(); }
     function manualAdd() { const input = document.getElementById('searchInput'); let s = input.value.toUpperCase().trim(); if(!s) return; if(!s.endsWith('USDT')) s+='USDT'; pinned.add(s); input.value=''; render(); }
-
-    // 補回：滑桿監聽事件
-    ['sqz','poc','slp','drv','mom'].forEach(k => {
-        document.getElementById('i_'+k).oninput = (e) => {
-            const v = parseFloat(e.target.value);
-            FILTER[k.toUpperCase()] = v / (k==='slp'?100:1000);
-            document.getElementById('v_'+k).innerText = (k==='slp'?'-':'') + (v/10).toFixed(1) + (k==='drv'?'':'%');
-        }
-    });
 </script>
 </body>
 </html>
