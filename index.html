@@ -27,7 +27,7 @@ with st.sidebar:
 # --- [C] 核心數據引擎 ---
 def get_whale_data(client, target):
     try:
-        # P2: 最近成交, B2: 持倉量, P3: 爆倉單
+        # P2: 成交, B2: 持倉, P3: 爆倉
         trades = client.futures_recent_trades(symbol=target, limit=20)
         oi = client.futures_open_interest(symbol=target)
         liqs = client.futures_get_all_liquidation_orders(symbol=target, limit=1)
@@ -40,10 +40,11 @@ def get_whale_data(client, target):
 if is_active and api_key and api_secret:
     client = Client(api_key, api_secret)
     
+    # 紀錄持倉歷史 (Session State)
     if 'prev_oi' not in st.session_state:
         st.session_state.prev_oi = 0.0
     
-    # 建立一個容器，避免畫面不斷向下滾動
+    # 動態容器，解決 GitHub Actions 渲染問題
     placeholder = st.empty()
 
     while is_active:
@@ -54,18 +55,19 @@ if is_active and api_key and api_secret:
             curr_oi = float(o_data['openInterest'])
             oi_change = curr_oi - st.session_state.prev_oi if st.session_state.prev_oi > 0 else 0
             
-            # --- [週六專屬歸屬判定] ---
-            # 根據您的需求：此期數僅歸屬於週六，不計入其他天
+            # 【核心策略判定：週六專屬歸屬】
             now = datetime.utcnow()
-            is_sat = now.weekday() == 5  # 5 代表週六
-            is_mon = now.weekday() == 0  # 0 代表週一
+            is_sat = now.weekday() == 5  # 週六
+            is_mon = now.weekday() == 0  # 週一
             
+            # 標籤顯示
             status_tag = "🟢 (週六專屬模式)" if is_sat else ("🔵 (週一高勝率監控)" if is_mon else "⚪ (一般時段)")
 
             with placeholder.container():
                 st.markdown(f"### 📊 {symbol} 實時戰報 {status_tag}")
-                st.write(f"最後更新時間 (UTC): {now.strftime('%H:%M:%S')}")
+                st.write(f"最後更新 (UTC): {now.strftime('%H:%M:%S')}")
 
+                # 數據面板
                 c1, c2, c3 = st.columns(3)
                 c1.metric("即時市價", f"${price:,.2f}")
                 c2.metric("持倉變動 (B2)", f"{curr_oi:,.0f}", f"{oi_change:,.2f}")
@@ -82,15 +84,15 @@ if is_active and api_key and api_secret:
                     elif not is_seller and oi_change > 0:
                         st.success(f"💎 訊號：偵測到巨鯨「底部建倉」！金額: ${vol:,.0f}")
                 else:
-                    st.write("📡 市場掃描中：目前尚未發現巨鯨大單...")
+                    st.write("📡 掃描中：目前波動低於巨鯨門檻...")
 
                 if l_data and len(l_data) > 0:
                     st.warning(f"🔥 P3 爆倉預警：觸發價 {l_data[0]['price']}")
 
             st.session_state.prev_oi = curr_oi
         
-        # 精確控制 3 秒更新一次，避免 GitHub Actions 報錯或 API 封鎖
+        # 強制 3 秒冷卻，避免 API 被封鎖
         time.sleep(3)
 else:
     st.info("💡 請在左側輸入 API 金鑰並點擊啟動。")
-    st.warning("提醒：根據您的策略，週六數據將自動歸類至週六專屬庫，不計入其他天數。")
+    st.warning("提醒：週六數據將嚴格歸類至週六專屬資料，不計入其他天數。")
