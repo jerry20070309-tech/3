@@ -2,101 +2,105 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ SNIPER V17.5 | 物理單線程脈衝版</title>
+    <title>⚡ SNIPER V17.7 | 完整組件版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
         body { background: #000; color: #FFD700; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
-        .card { background: #080808; border: 1px solid #1a1a1a; border-radius: 4px; padding: 10px; transition: 0.2s; }
-        .monster-boost { border: 1px solid #ef4444 !important; animation: glow 1s infinite alternate; }
-        @keyframes glow { from { box-shadow: 0 0 5px #450a0a; } to { box-shadow: 0 0 15px #ef4444; } }
-        .btn-start { background: #eab308; color: #000; padding: 12px 24px; font-weight: 900; border-radius: 4px; cursor: pointer; }
-        .btn-stop { background: #ef4444; color: #fff; padding: 12px 24px; font-weight: 900; border-radius: 4px; cursor: pointer; }
+        .card { background: #080808; border: 1px solid #333; border-radius: 4px; padding: 10px; position: relative; }
+        .monster-boost { border: 2px solid #ef4444 !important; background: rgba(239, 68, 68, 0.1); }
+        .btn-start { background: #eab308; color: #000; padding: 10px 20px; font-weight: 900; border-radius: 4px; cursor: pointer; }
+        .btn-stop { background: #ef4444; color: #fff; padding: 10px 20px; font-weight: 900; border-radius: 4px; cursor: pointer; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #333; }
     </style>
 </head>
 <body class="h-screen flex flex-col p-2 text-[10px]">
 
-    <header class="p-3 border-b border-yellow-900/50 flex justify-between items-center">
+    <header class="p-3 border-b border-yellow-900/50 flex justify-between items-center bg-black">
         <div>
-            <h1 class="text-xl font-black text-yellow-500 italic uppercase">⚡ SNIPER V17.5</h1>
-            <div id="dayNotice" class="text-blue-500 font-bold uppercase tracking-widest">待機中</div>
+            <h1 class="text-xl font-black text-yellow-500 italic uppercase">⚡ SNIPER V17.7</h1>
+            <div id="dayNotice" class="text-blue-500 font-bold uppercase">System Locked</div>
         </div>
         <div class="flex gap-4 items-center">
-            <button id="switchBtn" onclick="toggleSystem()" class="btn-start">ACTIVATE (START)</button>
-            <div id="apiStatus" class="bg-zinc-900 px-3 py-1 rounded border border-zinc-800 text-zinc-600 font-black">OFFLINE</div>
+            <button id="switchBtn" onclick="toggleSystem()" class="btn-start">ACTIVATE SYSTEM</button>
+            <div id="apiStatus" class="text-zinc-500 font-bold border border-zinc-800 px-3 py-1 rounded">OFFLINE</div>
         </div>
     </header>
 
-    <div class="bg-zinc-900/30 p-2 grid grid-cols-5 gap-6 border-b border-yellow-900/20">
-        <div>🌀 SQZ <span id="v_sqz" class="text-yellow-500 font-bold">1.2%</span><input type="range" id="i_sqz" min="5" max="50" value="12" class="w-full h-1 bg-zinc-800 rounded-lg appearance-none"></div>
-        <div>🎯 POC <span id="v_poc" class="text-green-400 font-bold">1.1%</span><input type="range" id="i_poc" min="1" max="50" value="11" class="w-full h-1 bg-zinc-800 rounded-lg appearance-none"></div>
-        <div>🚨 SLP <span id="v_slp" class="text-red-500 font-bold">1.5%</span><input type="range" id="i_slp" min="5" max="50" value="15" class="w-full h-1 bg-zinc-800 rounded-lg appearance-none"></div>
-        <div>🚀 DRV <span id="v_drv" class="text-blue-400 font-bold">90</span><input type="range" id="i_drv" min="10" max="150" value="90" class="w-full h-1 bg-zinc-800 rounded-lg appearance-none"></div>
-        <div>⚡ MOM <span id="v_mom" class="text-orange-500 font-bold">0.8%</span><input type="range" id="i_mom" min="1" max="50" value="8" class="w-full h-1 bg-zinc-800 rounded-lg appearance-none"></div>
+    <div class="bg-zinc-900/40 p-2 grid grid-cols-5 gap-6 border-b border-yellow-900/20">
+        <div>🌀 SQZ橫盤 <span id="v_sqz" class="text-yellow-500 font-bold">1.2%</span><input type="range" id="i_sqz" min="5" max="50" value="12" class="w-full h-1 bg-zinc-800 appearance-none"></div>
+        <div>🎯 POC突破 <span id="v_poc" class="text-green-400 font-bold">1.1%</span><input type="range" id="i_poc" min="1" max="50" value="11" class="w-full h-1 bg-zinc-800 appearance-none"></div>
+        <div>🚨 SLP乖離 <span id="v_slp" class="text-red-500 font-bold">1.5%</span><input type="range" id="i_slp" min="5" max="50" value="15" class="w-full h-1 bg-zinc-800 appearance-none"></div>
+        <div>🚀 DRV真空 <span id="v_drv" class="text-blue-400 font-bold">90</span><input type="range" id="i_drv" min="10" max="150" value="90" class="w-full h-1 bg-zinc-800 appearance-none"></div>
+        <div>⚡ MOM均線 <span id="v_mom" class="text-orange-500 font-bold">0.8%</span><input type="range" id="i_mom" min="1" max="50" value="8" class="w-full h-1 bg-zinc-800 appearance-none"></div>
     </div>
 
     <div class="flex flex-1 overflow-hidden mt-2 gap-2">
-        <main id="dashboard" class="flex-1 overflow-y-auto grid grid-cols-4 gap-2 p-1 content-start"></main>
-        <aside class="w-72 bg-zinc-950 border-l border-yellow-900/30 flex flex-col">
-            <div class="p-2 border-b border-zinc-800 text-red-500 font-black italic uppercase">Whale Log</div>
-            <div id="logBox" class="flex-1 overflow-y-auto p-2 space-y-1 text-[9px]"></div>
+        <main id="dashboard" class="flex-1 overflow-y-auto grid grid-cols-4 gap-2 content-start"></main>
+        
+        <aside class="w-80 bg-black border-l border-yellow-900/30 flex flex-col">
+            <div class="p-2 border-b border-zinc-800 text-red-500 font-black flex justify-between">
+                <span>🛡️ WHALE & LIQ</span>
+                <span id="speed" class="text-zinc-600">3000ms</span>
+            </div>
+            <div id="logBox" class="flex-1 overflow-y-auto p-2 space-y-1 font-mono text-[9px]"></div>
         </aside>
     </div>
 
 <script>
     let isRunning = false, stats = {}, activeWS = new Map();
     let FILTER = { SQZ: 0.012, POC: 0.011, SLP: 0.015, DRV: 90, MOM: 0.008 };
-    let requestStep = 0; // 0:價格, 1:資費, 2:深度
+    let loopStep = 0;
 
+    // [A] 物理開關
     function toggleSystem() {
         isRunning = !isRunning;
-        const btn = document.getElementById('switchBtn');
-        const status = document.getElementById('apiStatus');
-        btn.innerText = isRunning ? "STOP (COOLING)" : "ACTIVATE (START)";
-        btn.className = isRunning ? "btn-stop" : "btn-start";
-        status.innerText = isRunning ? "MONITORING" : "OFFLINE";
-        status.className = isRunning ? "bg-green-900/20 text-green-500 font-black px-3 py-1 rounded border border-green-800" : "bg-zinc-900 text-zinc-600 font-black px-3 py-1 rounded border border-zinc-800";
+        document.getElementById('switchBtn').innerText = isRunning ? "STOP RADAR" : "ACTIVATE SYSTEM";
+        document.getElementById('switchBtn').className = isRunning ? "btn-stop" : "btn-start";
+        document.getElementById('apiStatus').innerText = isRunning ? "RUNNING" : "OFFLINE";
+        document.getElementById('apiStatus').style.color = isRunning ? "#22c55e" : "#555";
         if (isRunning) masterClock();
     }
 
-    // [A] 嚴格單一封包時鐘 (每三秒只發出一個 URL)
+    // [A-1] 嚴格每三秒一個請求 (徹底防爆)
     async function masterClock() {
         if (!isRunning) return;
         try {
-            if (requestStep === 0) {
-                const res = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
-                if (res.status === 418) throw "418";
-                const data = await res.json();
+            if (loopStep === 0) {
+                const r = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
+                const data = await r.json();
                 data.forEach(t => {
                     if (!t.symbol.endsWith('USDT')) return;
                     const s = t.symbol, p = parseFloat(t.lastPrice), h = parseFloat(t.highPrice), l = parseFloat(t.lowPrice);
-                    let score = ((h-l)/p <= FILTER.SQZ) ? 50 : 0;
-                    if (!stats[s]) stats[s] = { s, score:0, price:p, funding:0, wall:0, liq:0, vol:0 };
-                    stats[s] = { ...stats[s], price:p, score, vol: parseFloat(t.quoteVolume) };
+                    let score = ((h-l)/p <= FILTER.SQZ) ? 50 : 0; // SQZ 基礎分
+                    if (!stats[s]) stats[s] = { s, score: 0, price: p, funding: 0, wall: 0, liq: 0, buyV: 0, sellV: 0, vol: 0 };
+                    stats[s].price = p; stats[s].score = score; stats[s].vol = parseFloat(t.quoteVolume);
                 });
-                requestStep = 1;
-            } else if (requestStep === 1) {
-                const res = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex');
-                const data = await res.json();
+                loopStep = 1;
+            } else if (loopStep === 1) {
+                const r = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex');
+                const data = await r.json();
                 data.forEach(p => { if(stats[p.symbol]) stats[p.symbol].funding = p.lastFundingRate; });
-                requestStep = 2;
+                loopStep = 2;
             } else {
+                // 針對高分幣補全掛單牆
                 const top = Object.values(stats).sort((a,b) => b.score - a.score)[0];
                 if (top) {
-                    const res = await fetch(`https://fapi.binance.com/fapi/v1/depth?symbol=${top.s}&limit=5`);
-                    const data = await res.json();
-                    stats[top.s].wall = data.asks[0][0];
-                    setupWhale(top.s);
+                    const r = await fetch(`https://fapi.binance.com/fapi/v1/depth?symbol=${top.s}&limit=5`);
+                    const d = await r.json();
+                    stats[top.s].wall = d.asks[0][0];
+                    setupWS(top.s);
                 }
-                requestStep = 0;
+                loopStep = 0;
             }
             render();
-        } catch (e) { console.error("API Blocked or Error"); }
-        setTimeout(masterClock, 3000); // 絕對三秒間隔
+        } catch (e) { console.warn("API Skip..."); }
+        setTimeout(masterClock, 3000); // 這裡強制 3 秒
     }
 
-    // [E] 巨鯨連線 (WebSocket 不佔 API 請求次數)
-    function setupWhale(s) {
+    // [E] 巨鯨 WS (完整邏輯)
+    function setupWS(s) {
         if (activeWS.has(s)) return;
         const ws = new WebSocket(`wss://fstream.binance.com/ws/${s.toLowerCase()}@aggTrade/${s.toLowerCase()}@forceOrder`);
         ws.onmessage = (e) => {
@@ -104,10 +108,12 @@
             if (d.e === "forceOrder") {
                 const val = (parseFloat(d.o.q) * parseFloat(d.o.p) / 1000).toFixed(1);
                 stats[s].liq += parseFloat(val);
-                addLog(`💀 [LIQ] ${s} $${val}K`, "text-red-500 font-bold");
+                addLog(`💀 [LIQ] ${s} $${val}K | ${d.o.S}`, "text-red-500 font-bold");
             }
             if (d.e === "aggTrade" && (parseFloat(d.q) * parseFloat(d.p)) > 50000) {
-                addLog(`🐋 [WHALE] ${s} $${(parseFloat(d.q)*parseFloat(d.p)/1000).toFixed(0)}K`, "text-green-500");
+                const side = d.m ? "SELL" : "BUY";
+                if (side === "BUY") stats[s].buyV += (parseFloat(d.q)*parseFloat(d.p));
+                addLog(`🐋 [WHALE] ${s} $${((parseFloat(d.q)*parseFloat(d.p))/1000).toFixed(0)}K | ${side}`, d.m ? "text-orange-600" : "text-green-500");
             }
         };
         activeWS.set(s, ws);
@@ -117,41 +123,46 @@
         const board = document.getElementById('dashboard');
         const sorted = Object.values(stats).sort((a,b) => b.score - a.score).slice(0, 40);
         board.innerHTML = sorted.map(x => `
-            <div class="card ${x.score >= 50 ? 'border-blue-900 bg-blue-950/10' : ''} ${x.vol > 5e8 ? 'monster-boost' : ''}">
-                <div class="flex justify-between font-black"><span class="text-white">${x.s}</span><span class="text-yellow-500">★${x.score}</span></div>
+            <div class="card ${x.score >= 50 ? 'border-blue-700 bg-blue-900/10' : ''} ${x.vol > 8e8 ? 'monster-boost' : ''}">
+                <div class="flex justify-between font-black"><span>${x.s}</span><span class="text-yellow-500">★${x.score}</span></div>
                 <div class="text-2xl font-black text-white py-1">$${x.price}</div>
                 <div class="flex justify-between text-[8px] font-bold">
-                    <span class="${x.funding < 0 ? 'text-red-500' : 'text-green-500'}">F: ${(x.funding*100).toFixed(4)}%</span>
-                    <span class="text-blue-400">WALL: $${parseFloat(x.wall).toFixed(2)}</span>
+                    <span class="${x.funding < 0 ? 'text-red-500' : 'text-green-400'}">FUND: ${(x.funding*100).toFixed(4)}%</span>
+                    <span class="text-blue-400 uppercase">Wall: $${parseFloat(x.wall).toFixed(2)}</span>
                 </div>
             </div>
         `).join('');
     }
 
-    // [G] 參數調節初始化
+    // [G] 滑桿與 [H] 週六策略
+    const day = new Date().getDay();
     const sliders = ['i_sqz', 'i_poc', 'i_slp', 'i_drv', 'i_mom'];
     sliders.forEach(id => {
         document.getElementById(id).oninput = (e) => {
             const key = id.split('_')[1].toUpperCase();
             FILTER[key] = parseFloat(e.target.value) / 1000;
             document.getElementById('v_'+id.split('_')[1]).innerText = (e.target.value/10).toFixed(1) + (key==='DRV'?'':'%');
-            if (Object.keys(stats).length > 0) render();
+            render();
         };
     });
+
+    if (day === 6) { // 週六數據歸屬
+        document.getElementById('dayNotice').innerText = "📅 SATURDAY STRATEGY";
+        FILTER.SQZ = 0.008; document.getElementById('i_sqz').value = 8;
+        document.getElementById('v_sqz').innerText = "0.8%";
+    } else if (day === 1) { // 週一
+        document.getElementById('dayNotice').innerText = "📅 MONDAY STRATEGY";
+        FILTER.POC = 0.015;
+    } else {
+        document.getElementById('dayNotice').innerText = "📅 NORMAL MONITORING";
+    }
 
     function addLog(m, c) {
         const b = document.getElementById('logBox');
         const d = document.createElement('div'); d.className = c;
         d.innerText = `[${new Date().toLocaleTimeString()}] ${m}`;
-        b.prepend(d); if(b.childNodes.length > 30) b.removeChild(b.lastChild);
+        b.prepend(d); if(b.childNodes.length > 50) b.removeChild(b.lastChild);
     }
-
-    // [H] 週六/週一預設策略
-    const day = new Date().getDay();
-    const notice = document.getElementById('dayNotice');
-    if (day === 6) { notice.innerText = "📅 SATURDAY MODE"; FILTER.SQZ = 0.008; }
-    else if (day === 1) { notice.innerText = "📅 MONDAY MODE"; FILTER.POC = 0.015; }
-    else { notice.innerText = "📅 REGULAR MODE"; }
 </script>
 </body>
 </html>
