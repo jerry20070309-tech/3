@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ SNIPER V33.4 | 三重校驗終極版</title>
+    <title>⚡ SNIPER V33.5 | 門檻嚴格死鎖版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
@@ -13,32 +13,25 @@
         .tag-active { background: #22c55e !important; color: #000 !important; font-weight: 800; padding: 0 4px; border-radius: 2px; }
         .tag-pattern { border: 1px solid #FFD700; color: #FFD700; padding: 0 4px; border-radius: 2px; font-size: 8px; font-weight: 800; }
         .bar-container { height: 4px; background: #222; border-radius: 2px; overflow: hidden; display: flex; margin: 6px 0; }
-        .bar-long { background: #22c55e; height: 100%; transition: 0.3s; }
-        .bar-short { background: #ef4444; height: 100%; transition: 0.3s; }
-        
-        /* 右側戰鬥紀錄 - 滾動條美化 */
+        .bar-long { background: #22c55e; height: 100%; }
+        .bar-short { background: #ef4444; height: 100%; }
         #log-panel { width: 340px; background: #080808; border-left: 1px solid #1a1a1a; display: flex; flex-direction: column; }
-        #log-container::-webkit-scrollbar { width: 4px; }
-        #log-container::-webkit-scrollbar-thumb { background: #333; }
         .log-entry { padding: 10px 15px; border-bottom: 1px solid #111; font-size: 11px; animation: slideIn 0.2s ease-out; }
         @keyframes slideIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
-        
-        /* 大戶地址列表 */
         .whale-list { background: #000; padding: 4px; border-radius: 4px; margin-top: 6px; border: 1px solid #222; }
-        .whale-row { display: grid; grid-template-cols: 1.3fr 0.5fr 1fr 1fr; gap: 2px; border-bottom: 1px solid #111; padding: 2px 0; font-size: 7px; opacity: 0.8; }
-        
+        .whale-row { display: grid; grid-template-cols: 1.3fr 0.5fr 1fr 1fr; gap: 2px; border-bottom: 1px solid #111; padding: 2px 0; font-size: 7px; }
         .btn-preset { background: #111; border: 1px solid #333; padding: 3px 12px; border-radius: 4px; font-size: 11px; font-weight: 800; color: #888; }
-        .btn-preset:hover { border-color: #FFD700; color: #fff; background: #222; }
-        input[type=range] { accent-color: #FFD700; width: 100%; cursor: pointer; margin-top: 4px; }
+        .btn-preset:hover { border-color: #FFD700; color: #fff; }
+        input[type=range] { accent-color: #FFD700; width: 100%; cursor: pointer; }
     </style>
 </head>
 <body class="flex flex-col">
 
     <header class="p-4 border-b border-yellow-900 bg-black flex justify-between items-center shrink-0">
         <div class="flex items-center gap-4">
-            <h1 class="text-2xl font-black text-yellow-500 italic uppercase">⚡ SNIPER V33.4</h1>
+            <h1 class="text-2xl font-black text-yellow-500 italic uppercase">⚡ SNIPER V33.5</h1>
             <div class="flex gap-2 bg-zinc-900 p-1 rounded border border-zinc-700">
-                <input id="searchInput" type="text" placeholder="搜尋(無視門檻) / ADD 手動添加" class="bg-transparent text-xs px-2 focus:outline-none w-52 text-white uppercase">
+                <input id="searchInput" type="text" placeholder="搜尋(無視門檻) / ADD 添加" class="bg-transparent text-xs px-2 focus:outline-none w-52 text-white uppercase">
                 <button onclick="manualAdd()" class="bg-yellow-600 text-black px-4 py-1 font-bold rounded">ADD</button>
             </div>
             <div class="flex gap-2 ml-4 border-l border-zinc-800 pl-4">
@@ -54,10 +47,10 @@
     </header>
 
     <div class="bg-zinc-900/40 p-3 border-b border-yellow-900/20 grid grid-cols-5 gap-8 items-center uppercase font-black text-zinc-500">
-        <div>🌀 SQZ <span id="v_sqz" class="text-yellow-500 ml-1">1.2%</span><input type="range" id="i_sqz" min="5" max="50" value="12"></div>
-        <div>🎯 POC <span id="v_poc" class="text-yellow-500 ml-1">1.1%</span><input type="range" id="i_poc" min="1" max="100" value="11"></div>
-        <div>🚨 SLP <span id="v_slp" class="text-yellow-500 ml-1">-1.5%</span><input type="range" id="i_slp" min="5" max="50" value="15"></div>
-        <div>🚀 DRV <span id="v_drv" class="text-yellow-500 ml-1">9.0</span><input type="range" id="i_drv" min="10" max="150" value="90"></div>
+        <div>🌀 SQZ <span id="v_sqz" class="text-yellow-500 ml-1">2.5%</span><input type="range" id="i_sqz" min="5" max="50" value="25"></div>
+        <div>🎯 POC <span id="v_poc" class="text-yellow-500 ml-1">2.0%</span><input type="range" id="i_poc" min="1" max="100" value="20"></div>
+        <div>🚨 SLP <span id="v_slp" class="text-yellow-500 ml-1">-3.5%</span><input type="range" id="i_slp" min="5" max="100" value="35"></div>
+        <div>🚀 DRV <span id="v_drv" class="text-yellow-500 ml-1">6.0</span><input type="range" id="i_drv" min="10" max="150" value="60"></div>
         <div>⚡ MOM <span id="v_mom" class="text-yellow-500 ml-1">0.8%</span><input type="range" id="i_mom" min="1" max="50" value="8"></div>
     </div>
 
@@ -76,7 +69,7 @@
     const CONFIG = { EXCLUDE: ['BTCUSDT','ETHUSDT'], THRESHOLD: 100000 };
     let stats = {}, pinned = new Set(), isRunning = false, activeWS = null;
     let m7History = {}, signalCount = {}, priceSnapshots = {}, lastSnapMin = -1;
-    let FILTER = { SQZ: 0.012, POC: 0.011, SLP: -0.015, DRV: 90, MOM: 0.008 };
+    let FILTER = { SQZ: 0.025, POC: 0.020, SLP: -0.035, DRV: 60, MOM: 0.008 };
 
     ['sqz','poc','slp','drv','mom'].forEach(k => {
         document.getElementById('i_'+k).oninput = (e) => {
@@ -93,16 +86,23 @@
 
     function pushTradeLog(s, side, usd) {
         const container = document.getElementById('log-container');
-        if(!container) return;
         const el = document.createElement('div');
-        el.className = `log-entry ${side==='BUY'?'text-green-400 border-l-4 border-green-500 bg-green-950/10':'text-red-400 border-l-4 border-red-500 bg-red-950/10'}`;
-        el.innerHTML = `<div class="flex justify-between font-black text-xs"><span class="tracking-widest">${s}</span><span>$${(usd/1000).toFixed(1)}K</span></div><div class="flex justify-between text-[8px] opacity-40 mt-1"><span>${side}</span><span>${new Date().toLocaleTimeString()}</span></div>`;
+        el.className = `log-entry ${side==='BUY'?'text-green-400 border-l-4 border-green-500':'text-red-400 border-l-4 border-red-500'}`;
+        el.innerHTML = `<div class="flex justify-between font-black text-xs"><span>${s}</span><span>$${(usd/1000).toFixed(1)}K</span></div><div class="flex justify-between text-[8px] opacity-40 mt-1"><span>${side} EXECUTION</span><span>${new Date().toLocaleTimeString()}</span></div>`;
         container.prepend(el);
         if(container.children.length > 50) container.lastChild.remove();
     }
 
-    function generateWhales() {
-        return Array.from({length: 4}, () => ({ addr: `0x${Math.random().toString(16).slice(2,6)}...${Math.floor(Math.random()*99)}`, side: Math.random() > 0.5 ? '多' : '空', size: `$${(Math.random() * 20 + 5).toFixed(1)}M`, pnl: (Math.random() * 15 * (Math.random() > 0.5 ? 1 : -1)).toFixed(2) + '%' }));
+    // 根據截圖數據強化大戶邏輯
+    function generateWhales(s) {
+        const mockData = [
+            { addr: "0x0ddf...02", side: "空", size: "$65.8M", pnl: "-1.07%" },
+            { addr: "0x35d1...b1", side: "空", size: "$62.2M", pnl: "+44.8%" },
+            { addr: "0x94d3...14", side: "空", size: "$60.0M", pnl: "+5.78%" },
+            { addr: "0x1b52...1b", side: "空", size: "$58.5M", pnl: "+23.1%" },
+            { addr: "0x8def...ae", side: "多", size: "$50.2M", pnl: "+28.2%" }
+        ];
+        return mockData.sort(() => Math.random() - 0.5).slice(0, 4);
     }
 
     async function scan() {
@@ -111,26 +111,23 @@
             const [tRes, pRes] = await Promise.all([fetch('https://fapi.binance.com/fapi/v1/ticker/24hr'), fetch('https://fapi.binance.com/fapi/v1/premiumIndex')]);
             const tickers = await tRes.json();
             const premiumMap = Object.fromEntries((await pRes.json()).map(p => [p.symbol, p]));
-            const now = new Date();
-            if (now.getMinutes() % 5 === 0 && now.getMinutes() !== lastSnapMin) {
-                lastSnapMin = now.getMinutes();
-                tickers.forEach(t => { priceSnapshots[t.symbol] = parseFloat(t.lastPrice); });
-                document.getElementById('klineStatus').innerText = `${now.getHours()}:${now.getMinutes()} 5M 快照對齊`;
-            }
+            
             tickers.forEach(t => {
                 const s = t.symbol; if (!s.endsWith('USDT') || CONFIG.EXCLUDE.includes(s)) return;
                 const price = parseFloat(t.lastPrice), avgPrice = parseFloat(t.weightedAvgPrice), vol = parseFloat(t.quoteVolume);
                 const mid24h = (parseFloat(t.highPrice) + parseFloat(t.lowPrice)) / 2, m25 = (mid24h * 0.7) + (avgPrice * 0.3);
-                if (!m7History[s]) m7History[s] = []; m7History[s].push(avgPrice); if (m7History[s].length > 10) m7History[s].shift();
-                const passM7 = price > (avgPrice * 1.002) && (avgPrice > m7History[s][0]);
-                signalCount[s] = passM7 ? (signalCount[s] || 0) + 1 : 0;
+                
                 const maSqz = (parseFloat(t.highPrice) - parseFloat(t.lowPrice)) / avgPrice, drvScore = Math.min(100, (Math.abs(parseFloat(t.priceChangePercent)) / (vol / 1e8)) * 15);
                 const v5m = (price - (priceSnapshots[s] || price)) / (priceSnapshots[s] || price);
+                
                 let patterns = []; if (maSqz < 0.006) patterns.push("🌀彈簧"); if (drvScore > 95) patterns.push("🚀真空"); if (v5m >= 0.04) patterns.push("🔥妖幣");
+                
+                // 核心計分
                 let score = (v5m >= 0.04 ? 50 : 0) + (maSqz <= FILTER.SQZ ? 25 : 0) + (drvScore >= FILTER.DRV ? 35 : 0);
+
                 if (!stats[s]) stats[s] = { s, score:0, buyVol:0, sellVol:0, trades:0, bigMoney:0, whales: [] };
-                stats[s] = { ...stats[s], price, fund: parseFloat(premiumMap[s]?.lastFundingRate || 0), score, drvScore, isAboveM7: signalCount[s]>=3, isTight: maSqz<0.003, patterns, tsl: drvScore > 90 ? avgPrice * 0.997 : m25 * 0.992 };
-                if (score >= 70 && stats[s].whales.length === 0) stats[s].whales = generateWhales();
+                stats[s] = { ...stats[s], price, fund: parseFloat(premiumMap[s]?.lastFundingRate || 0), score, drvScore, isTight: maSqz<0.003, patterns, tsl: drvScore > 90 ? avgPrice * 0.997 : m25 * 0.992 };
+                if (score >= 70 && stats[s].whales.length === 0) stats[s].whales = generateWhales(s);
             });
             render();
         } catch (e) { console.error(e); }
@@ -156,11 +153,13 @@
         const board = document.getElementById('dashboard');
         const query = document.getElementById('searchInput').value.toUpperCase().trim();
         
-        // 【第三次校驗：搜尋邏輯完全對齊】
+        // 【嚴格死鎖過濾】
         const list = Object.values(stats)
             .filter(x => {
-                if (query !== "") return x.s.includes(query); // 搜尋時無視分數
-                return (x.score >= 70 || pinned.has(x.s));    // 平時嚴格執行門檻
+                // 1. 如果有搜尋詞，只看搜尋匹配
+                if (query !== "") return x.s.includes(query);
+                // 2. 平時：必須 (分數 >= 70) 或者是 (被手動釘選)
+                return (x.score >= 70 || pinned.has(x.s));
             })
             .sort((a,b) => (pinned.has(b.s) - pinned.has(a.s)) || (b.score - a.score)).slice(0, 15);
 
@@ -170,7 +169,6 @@
             <div class="card p-4 rounded-xl ${pinned.has(x.s)?'pinned':''} ${x.score >= 90 ? 'hunt-card' : ''}" onclick="togglePin('${x.s}')">
                 <div class="flex justify-between items-start mb-1">
                     <div class="flex gap-1 flex-wrap max-w-[80%]">
-                        <span class="px-1 rounded ${x.isAboveM7 ? 'tag-active' : 'bg-zinc-800 text-zinc-600'} text-[8px]">M7_VLD</span>
                         <span class="px-1 rounded ${x.isTight ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-600'} text-[8px]">TIGHT</span>
                         ${x.patterns.map(p => `<span class="tag-pattern text-[8px]">${p}</span>`).join('')}
                     </div>
@@ -185,7 +183,7 @@
                 </div>
                 <div class="bar-container"><div class="bar-long" style="width: ${longP}%"></div><div class="bar-short" style="width: ${100-longP}%"></div></div>
                 <div class="grid grid-cols-2 gap-2 my-2 text-[10px] font-black">
-                    <div class="bg-zinc-900 p-2 border border-zinc-800 rounded text-zinc-500">TRADES: <span class="text-white">${x.trades}</span></div>
+                    <div class="bg-zinc-900 p-2 border border-zinc-800 rounded text-zinc-500 uppercase">Trades: <span class="text-white">${x.trades}</span></div>
                     <div class="bg-zinc-900 p-2 border border-zinc-800 rounded text-right text-blue-400">FLOW: $${(x.bigMoney/1000).toFixed(1)}K</div>
                 </div>
                 <div class="whale-list font-mono">
