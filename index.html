@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ SNIPER V31.1 | 鯨魚分佈強化版</title>
+    <title>⚡ SNIPER V31.2 | 完整復刻增強版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
@@ -11,11 +11,13 @@
         .hunt-card { border: 2px solid #ff0000; background: #2a0000 !important; box-shadow: 0 0 15px #ff0000; }
         .pinned { border: 2px solid #3b82f6 !important; background: #081221 !important; opacity: 1 !important; }
         .tag-active { background: #22c55e !important; color: #000 !important; }
-        .tag-pattern { border: 1px solid #FFD700; color: #FFD700; padding: 0 4px; border-radius: 2px; font-size: 8px; }
-        .tsl-box { border-top: 1px dashed #333; margin-top: 4px; padding-top: 4px; display: flex; justify-content: space-between; font-size: 7px; color: #888; }
-        .bar-container { height: 6px; background: #222; border-radius: 3px; overflow: hidden; display: flex; margin: 6px 0; }
-        .bar-long { background: #22c55e; height: 100%; transition: 0.5s; box-shadow: 0 0 8px rgba(34,197,94,0.4); }
-        .bar-short { background: #ef4444; height: 100%; transition: 0.5s; box-shadow: 0 0 8px rgba(239,68,68,0.4); }
+        .tag-vlt { background: #8b5cf6 !important; color: #fff !important; }
+        .tag-pattern { border: 1px solid #FFD700; color: #FFD700; padding: 0 4px; border-radius: 2px; font-size: 8px; font-weight: 800; }
+        .tsl-box { border-top: 1px dashed #444; margin-top: 6px; padding-top: 4px; display: flex; justify-content: space-between; font-size: 7px; color: #888; }
+        /* 多空條樣式 */
+        .bar-container { height: 4px; background: #222; border-radius: 2px; overflow: hidden; display: flex; margin: 4px 0; }
+        .bar-long { background: #22c55e; height: 100%; transition: 0.4s; }
+        .bar-short { background: #ef4444; height: 100%; transition: 0.4s; }
         .btn-preset { background: #1a1a1a; border: 1px solid #333; padding: 2px 8px; border-radius: 4px; font-size: 9px; }
     </style>
 </head>
@@ -23,18 +25,19 @@
 
     <header class="p-4 border-b border-yellow-900 bg-black flex justify-between items-center shrink-0">
         <div class="flex items-center gap-4">
-            <h1 class="text-2xl font-black text-yellow-500 italic">⚡ SNIPER V31.1</h1>
+            <h1 class="text-2xl font-black text-yellow-500 italic">⚡ SNIPER V31.2</h1>
             <div class="flex gap-2 bg-zinc-900 p-1 rounded border border-zinc-700">
                 <input id="searchInput" type="text" placeholder="搜尋幣名" class="bg-transparent text-xs px-2 focus:outline-none w-24 text-white">
                 <button onclick="manualAdd()" class="bg-yellow-600 text-black px-2 py-1 font-bold rounded">ADD</button>
             </div>
             <div class="flex gap-2 ml-4">
+                <button onclick="applyPreset('Ambush')" class="btn-preset text-blue-400">週末埋伏</button>
                 <button onclick="applyPreset('Hunt')" class="btn-preset text-red-400">強勢獵殺</button>
                 <button onclick="applyPreset('Spike')" class="btn-preset text-purple-400">暴力異動</button>
             </div>
         </div>
         <div class="flex gap-4">
-            <div id="klineStatus" class="bg-zinc-800 px-3 py-1 rounded text-white flex items-center italic text-[9px]">4S SYNCING...</div>
+            <div id="klineStatus" class="bg-zinc-800 px-3 py-1 rounded text-white flex items-center italic">WAITING 5M...</div>
             <button id="sysBtn" onclick="toggleSystem()" class="bg-blue-600 text-white px-8 py-2 rounded font-black hover:bg-blue-500 uppercase">START RADAR</button>
         </div>
     </header>
@@ -51,7 +54,8 @@
         <main id="dashboard" class="flex-1 p-3 overflow-y-auto bg-black grid grid-cols-4 gap-3 content-start"></main>
         <aside class="w-80 border-l border-yellow-900 bg-zinc-950 flex flex-col shrink-0">
             <div class="p-3 border-b border-zinc-800 text-red-500 font-bold flex justify-between uppercase">
-                <span>🐋 巨鯨即時監控 (>100K)</span>
+                <span>🐋 巨鯨即時日誌</span>
+                <span class="text-zinc-600">4s PULSE</span>
             </div>
             <div id="logContainer" class="flex-1 overflow-y-auto p-2 space-y-1 font-mono text-[9px]"></div>
         </aside>
@@ -77,6 +81,7 @@
             if (now.getMinutes() % 5 === 0 && now.getMinutes() !== lastSnapMin) {
                 lastSnapMin = now.getMinutes();
                 tickers.forEach(t => { priceSnapshots[t.symbol] = parseFloat(t.lastPrice); });
+                document.getElementById('klineStatus').innerText = `${now.getHours()}:${now.getMinutes()} 5M SYNC`;
             }
 
             tickers.forEach(t => {
@@ -84,7 +89,7 @@
                 if (!s.endsWith('USDT') || CONFIG.EXCLUDE.includes(s)) return;
                 const price = parseFloat(t.lastPrice), avgPrice = parseFloat(t.weightedAvgPrice);
                 
-                // M25 / M7 核心邏輯
+                // V30.0 核心 M25 邏輯
                 const mid24h = (parseFloat(t.highPrice) + parseFloat(t.lowPrice)) / 2;
                 const m25 = (mid24h * 0.7) + (avgPrice * 0.3);
                 if (!m7History[s]) m7History[s] = [];
@@ -97,6 +102,12 @@
                 const drvScore = Math.min(100, (Math.abs(parseFloat(t.priceChangePercent)) / (parseFloat(t.quoteVolume) / 1e8)) * 15);
                 const v5m = (price - (priceSnapshots[s] || price)) / (priceSnapshots[s] || price);
 
+                // V30.0 Pattern 邏輯
+                let patterns = [];
+                if (maSqz < 0.006) patterns.push("🌀彈簧吸籌");
+                if (drvScore > 95) patterns.push("🚀真空噴發");
+                if (v5m >= 0.05) patterns.push("🔥妖幣放量");
+
                 if (!stats[s]) stats[s] = { s, score:0, trades:0, bigMoney:0, buyVol:0, sellVol:0 };
                 
                 let score = 0;
@@ -106,11 +117,11 @@
 
                 stats[s] = { ...stats[s], price, score, maSqz, drvScore, v5m, chg: t.priceChangePercent, 
                              isAboveM7: signalCount[s]>=3, fund: parseFloat(premiumMap[s]?.lastFundingRate || 0),
-                             tsl: drvScore > 90 ? avgPrice * 0.997 : m25 * 0.992,
+                             patterns, tsl: drvScore > 90 ? avgPrice * 0.997 : m25 * 0.992,
                              ttp: price * 1.05 };
             });
             render();
-        } catch (e) { console.warn("Sync Error"); }
+        } catch (e) { console.warn("Scan busy..."); }
         setTimeout(scan, 4000);
     }
 
@@ -122,7 +133,7 @@
                 if (stats[d.s]) {
                     const usd = parseFloat(d.q) * parseFloat(d.p);
                     stats[d.s].trades++;
-                    if (d.m) stats[d.s].sellVol += usd; else stats[d.s].buyVol += usd; // [核心] 分配買賣力道
+                    if (d.m) stats[d.s].sellVol += usd; else stats[d.s].buyVol += usd;
                     if (usd >= 100000) {
                         stats[d.s].bigMoney += usd;
                         addLog(d.s, usd, d.m ? "SELL" : "BUY");
@@ -142,33 +153,36 @@
             return `
             <div class="card p-3 rounded-lg ${pinned.has(x.s)?'pinned':''} ${x.score >= 90 ? 'hunt-card' : ''}" onclick="togglePin('${x.s}')">
                 <div class="flex justify-between items-start mb-1">
-                    <span class="px-1 rounded ${x.isAboveM7 ? 'tag-active' : 'bg-zinc-800 text-zinc-500'}">M7_VLD</span>
+                    <div class="flex gap-1 flex-wrap max-w-[75%]">
+                        <span class="px-1 rounded ${x.isAboveM7 ? 'tag-active' : 'bg-zinc-800 text-zinc-500'}">M7_VLD</span>
+                        ${x.patterns.map(p => `<span class="tag-pattern">${p}</span>`).join('')}
+                    </div>
                     <span class="text-yellow-500 font-black">★ ${x.score.toFixed(0)}</span>
                 </div>
-                <div class="flex justify-between items-center">
+                <div class="flex justify-between items-center mt-1">
                     <h2 class="text-xl font-black text-white italic">${x.s.replace('USDT','')}</h2>
                     <div class="text-right">
-                        <div class="text-[8px] text-zinc-500 font-bold">$${x.price}</div>
+                        <div class="text-[9px] text-white font-bold">$${x.price}</div>
                         <div class="text-[8px] ${x.fund < 0 ? 'text-green-500' : 'text-red-500'}">${(x.fund*100).toFixed(4)}%</div>
                     </div>
                 </div>
                 
-                <div class="flex justify-between text-[7px] mt-2 font-bold uppercase">
-                    <span class="text-green-500">Long ${longP}%</span>
-                    <span class="text-red-500">${shortP}% Short</span>
+                <div class="flex justify-between text-[7px] mt-2 font-bold opacity-80 uppercase">
+                    <span class="text-green-500">BUY ${longP}%</span>
+                    <span class="text-red-500">${shortP}% SELL</span>
                 </div>
                 <div class="bar-container">
                     <div class="bar-long" style="width: ${longP}%"></div>
                     <div class="bar-short" style="width: ${shortP}%"></div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-1 mt-1 text-[8px]">
+                <div class="grid grid-cols-2 gap-1 mt-1 text-[8px] font-bold">
                     <div class="bg-black p-1 border border-zinc-900">筆數: ${x.trades}</div>
                     <div class="bg-black p-1 border border-zinc-900 text-right text-blue-400">瞬入: $${(x.bigMoney/1000).toFixed(1)}K</div>
                 </div>
                 <div class="tsl-box">
                     <span>SL: ${x.tsl.toFixed(4)}</span>
-                    <span class="text-green-800">TP: ${x.ttp.toFixed(4)}</span>
+                    <span class="text-green-700 font-bold">TP: ${x.ttp.toFixed(4)}</span>
                 </div>
             </div>`;
         }).join('');
@@ -178,7 +192,7 @@
         const container = document.getElementById('logContainer');
         const div = document.createElement('div');
         div.className = `p-1 bg-zinc-900 border-l-2 ${side==='BUY'?'border-green-500':'border-red-500'} mb-1 text-[8px]`;
-        div.innerHTML = `<b>${s}</b> $${(usd/1000).toFixed(1)}K <span class="float-right text-zinc-700">${side}</span>`;
+        div.innerHTML = `🐋 <b>${s}</b> $${(usd/1000).toFixed(1)}K <span class="float-right text-zinc-700">${new Date().toLocaleTimeString().slice(3)}</span>`;
         container.prepend(div);
         if(container.childNodes.length > 30) container.removeChild(container.lastChild);
     }
@@ -187,7 +201,12 @@
     function togglePin(s) { pinned.has(s) ? pinned.delete(s) : pinned.add(s); render(); }
     function manualAdd() { const input = document.getElementById('searchInput'); let s = input.value.toUpperCase().trim(); if(!s) return; if(!s.endsWith('USDT')) s+='USDT'; pinned.add(s); input.value=''; render(); }
     function applyPreset(type) { 
-        const p = type === 'Hunt' ? { sqz: 15, poc: 12, slp: 20, drv: 85, mom: 12 } : { sqz: 25, poc: 20, slp: 35, drv: 60, mom: 25 };
+        const presets = {
+            'Ambush': { sqz: 8, poc: 5, slp: 5, drv: 110, mom: 5 },
+            'Hunt': { sqz: 15, poc: 12, slp: 20, drv: 85, mom: 12 },
+            'Spike': { sqz: 25, poc: 20, slp: 35, drv: 60, mom: 25 }
+        };
+        const p = presets[type];
         Object.keys(p).forEach(k => { document.getElementById('i_'+k).value = p[k]; document.getElementById('i_'+k).dispatchEvent(new Event('input')); });
     }
 
