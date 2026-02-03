@@ -16,7 +16,7 @@ st.markdown("""
 # --- [B] 側邊欄控制：搜尋與 API 配置 ---
 with st.sidebar:
     st.title("⚡ SNIPER RADAR")
-    # P1: 搜尋功能 - 這裡輸入幣名後，雷達會立即切換
+    # P1: 搜尋功能 - 輸入後雷達立即切換監控目標
     symbol = st.text_input("🔍 搜尋監控幣對 (如 BTCUSDT)", value="BTCUSDT").upper()
     whale_limit = st.number_input("💵 巨鯨門檻 (USDT)", value=50000)
     
@@ -28,7 +28,7 @@ with st.sidebar:
 # --- [C] 核心數據引擎：每 3 秒同步發送 3 個封包 ---
 def get_whale_data(client, target):
     try:
-        # 同步請求：P2(成交)、B2(持倉)、P3(爆倉)
+        # 同步請求 3 個封包：P2(成交)、B2(持倉)、P3(爆倉)
         trades = client.futures_recent_trades(symbol=target, limit=20)
         oi = client.futures_open_interest(symbol=target)
         liqs = client.futures_get_all_liquidation_orders(symbol=target, limit=1)
@@ -41,7 +41,7 @@ if is_active and api_key and api_secret:
     client = Client(api_key, api_secret)
     dashboard = st.empty()
     
-    # 紀錄持倉歷史 (B2 變化判斷核心)
+    # 紀錄持倉歷史 (用於計算 B2 變化判斷莊家動向)
     if 'prev_oi' not in st.session_state:
         st.session_state.prev_oi = 0.0
 
@@ -54,6 +54,7 @@ if is_active and api_key and api_secret:
         if t_data and o_data:
             price = float(t_data[-1]['price'])
             curr_oi = float(o_data['openInterest'])
+            # 計算持倉變動 (B2 核心)
             oi_change = curr_oi - st.session_state.prev_oi if st.session_state.prev_oi > 0 else 0
             
             # 【週六專屬歸屬判定】
@@ -62,13 +63,13 @@ if is_active and api_key and api_secret:
             with dashboard.container():
                 st.markdown(f"## 📊 {symbol} 實時戰報 " + ("🟢 (週六模式)" if is_sat else ""))
                 
-                # 儀表板區域
+                # 數據指標區域
                 c1, c2, c3 = st.columns(3)
                 c1.metric("即時市價", f"${price:,.2f}")
-                c2.metric("持倉變動 (B2)", f"{curr_oi:,.0f}", f"{oi_change:,.2f}")
+                c2.metric("持倉變動 (B2)", f"{curr_oi:,.2f}", f"{oi_change:,.2f}")
                 
                 vol = price * float(t_data[-1]['qty'])
-                c3.metric("最新成交 (P2)", f"${vol:,.0f}")
+                c3.metric("最新成交額 (P2)", f"${vol:,.0f}")
 
                 # 🕵️ 巨鯨判定：進貨 vs 出貨
                 st.divider()
@@ -89,4 +90,4 @@ if is_active and api_key and api_secret:
         wait = max(0, 3.0 - (time.perf_counter() - cycle_start))
         time.sleep(wait)
 else:
-    st.info("💡 請在左側輸入 API 金鑰並點擊啟動。這將解決 GitHub Actions 的排隊報錯問題。")
+    st.info("💡 請在左側輸入 API 金鑰並啟動。這將解決 GitHub Actions 的排隊報錯問題。")
