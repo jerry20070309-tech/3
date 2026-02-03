@@ -28,7 +28,7 @@ with st.sidebar:
 # --- [C] 核心數據引擎 ---
 def get_whale_data(client, target):
     try:
-        # 同步請求 3 個封包：P2(成交)、B2(持倉)、P3(爆倉)
+        # P2:成交數據, B2:持倉數據, P3:爆倉預警
         trades = client.futures_recent_trades(symbol=target, limit=20)
         oi = client.futures_open_interest(symbol=target)
         liqs = client.futures_get_all_liquidation_orders(symbol=target, limit=1)
@@ -41,14 +41,14 @@ if is_active and api_key and api_secret:
     try:
         client = Client(api_key, api_secret)
         
-        # 紀錄持倉歷史 (Session State)
+        # 紀錄持倉歷史 (Session State) 用於計算 B2 變化
         if 'prev_oi' not in st.session_state:
             st.session_state.prev_oi = 0.0
             
-        # 動態顯示容器，確保 GitHub Actions 運行不卡頓
+        # 動態顯示容器：確保 GitHub Actions 運行不卡頓 (對齊 image_d427d9.png)
         placeholder = st.empty()
         
-        while True:
+        while is_active:
             cycle_start = time.perf_counter()
             t_data, o_data, l_data = get_whale_data(client, symbol)
             
@@ -57,7 +57,7 @@ if is_active and api_key and api_secret:
                 curr_oi = float(o_data['openInterest'])
                 oi_change = curr_oi - st.session_state.prev_oi if st.session_state.prev_oi > 0 else 0
                 
-                # 【策略核心：週六/週一高勝率判定】
+                # --- 【策略核心：週六/週一高勝率判定】 ---
                 now = datetime.utcnow()
                 is_sat = now.weekday() == 5  # 週六
                 is_mon = now.weekday() == 0  # 週一
@@ -73,7 +73,7 @@ if is_active and api_key and api_secret:
                     st.markdown(f"### 📊 {symbol} 即時戰報 {status_tag}")
                     st.write(f"最後掃描 (UTC): {now.strftime('%Y-%m-%d %H:%M:%S')}")
                     
-                    # 儀表板區域
+                    # 儀表板區域 (C1: 市價, C2: 持倉變動, C3: 最新成交)
                     c1, c2, c3 = st.columns(3)
                     c1.metric("即時市價", f"${price:,.2f}")
                     c2.metric("持倉變動 (B2)", f"{curr_oi:,.0f}", f"{oi_change:,.2f}")
@@ -98,17 +98,19 @@ if is_active and api_key and api_secret:
                     if l_data and len(l_data) > 0:
                         st.warning(f"🔥 P3 爆倉預警：觸發價 {l_data[0]['price']}")
                         
-                    # 週六資料歸屬警示
+                    # 週六數據歸屬警示 (符合您的特殊標記要求)
                     if is_sat:
-                        st.info("💡 系統提醒：週六數據將自動歸類至週六專屬庫，不計入其他天數。")
+                        st.warning("⚠️ 提醒：週六數據將自動歸類至週六專屬庫，不計入其他天數。")
 
                 # 更新持倉歷史
                 st.session_state.prev_oi = curr_oi
                 
-                # 精確控制 3 秒循環，防止被幣安封鎖 IP
+                # 精確控制 3 秒循環，防止 GitHub Actions 排隊報錯 (對齊 image_d427d9.png)
                 wait = max(0, 3.0 - (time.perf_counter() - cycle_start))
                 time.sleep(wait)
                 
+    except BinanceAPIException as e:
+        st.error(f"幣安 API 錯誤: {e}")
     except Exception as e:
         st.error(f"系統錯誤: {e}")
 else:
