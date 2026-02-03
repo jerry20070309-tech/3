@@ -2,140 +2,163 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ SNIPER V16.9 | 打包流控穩定版</title>
+    <title>⚡ SNIPER V17.1 | 巨鯨核心補完版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
         body { background: #050505; color: #FFD700; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
-        .card { background: #0a0a0a; border: 1px solid #1a1a1a; transition: 0.2s; border-radius: 8px; }
+        .card { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 8px; transition: 0.3s; }
         .tight-zone { border: 1px solid #3b82f6 !important; box-shadow: inset 0 0 15px #1e3a8a; }
         .monster-boost { animation: flash-red 0.5s infinite; border: 2px solid #ef4444 !important; }
         @keyframes flash-red { 0%, 100% { background: #0a0a0a; } 50% { background: #450a0a; } }
         .metric-box { background: rgba(20,20,20,0.8); border: 1px solid #333; padding: 4px; border-radius: 4px; }
+        .flow-high { color: #22c55e; text-shadow: 0 0 5px #22c55e; }
+        #logBox div { border-bottom: 1px solid #111; padding: 2px 0; }
     </style>
 </head>
 <body class="h-screen flex flex-col p-2 text-[10px]">
 
     <header class="p-3 border-b border-yellow-900 flex justify-between items-center bg-black">
         <div>
-            <h1 class="text-xl font-black text-yellow-500 italic uppercase">⚡ SNIPER V16.9</h1>
-            <div id="dateNotice" class="text-blue-400 font-bold">系統載入中...</div>
+            <h1 class="text-xl font-black text-yellow-500 italic uppercase">⚡ SNIPER V17.1</h1>
+            <div id="strategyNotice" class="text-blue-400 font-bold uppercase tracking-tighter">等待手動啟動...</div>
         </div>
-        <div class="flex-1 max-w-md px-10">
-            <input type="text" id="searchInput" placeholder="搜尋幣名 (例: BTC)..." class="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-1 text-white uppercase outline-none focus:border-yellow-500">
+        <div class="flex gap-2">
+            <button id="startBtn" onclick="toggleRadar(true)" class="bg-green-600 text-white px-6 py-1 rounded font-black hover:bg-green-500">START RADAR</button>
+            <button id="stopBtn" onclick="toggleRadar(false)" class="bg-red-600 text-white px-6 py-1 rounded font-black hidden">STOP & COOL</button>
         </div>
-        <div id="apiStatus" class="bg-zinc-800 px-4 py-1 rounded text-green-400 font-bold uppercase">雙封包打包模式啟動</div>
+        <div id="apiStatus" class="bg-zinc-800 px-4 py-1 rounded text-zinc-500 font-bold uppercase">OFFLINE</div>
     </header>
 
     <div class="bg-zinc-900/50 p-2 border-b border-yellow-900/30 grid grid-cols-5 gap-4 uppercase font-bold text-zinc-400">
-        <div>🌀 SQZ <span id="v_sqz" class="text-yellow-500">1.2%</span><input type="range" id="i_sqz" min="5" max="50" value="12" class="w-full"></div>
-        <div>🎯 POC <span id="v_poc" class="text-green-400">1.1%</span><input type="range" id="i_poc" min="1" max="100" value="11" class="w-full"></div>
-        <div>🚨 SLP <span id="v_slp" class="text-red-500">-15%</span><input type="range" id="i_slp" min="5" max="50" value="15" class="w-full"></div>
-        <div>🚀 DRV <span id="v_drv" class="text-blue-400">90</span><input type="range" id="i_drv" min="10" max="150" value="90" class="w-full"></div>
-        <div>⚡ MOM <span id="v_mom" class="text-orange-500">0.8%</span><input type="range" id="i_mom" min="1" max="50" value="8" class="w-full"></div>
+        <div>🌀 SQZ(橫盤) <span id="v_sqz" class="text-yellow-500">1.2%</span><input type="range" id="i_sqz" min="5" max="50" value="12" class="w-full"></div>
+        <div>🎯 POC(位置) <span id="v_poc" class="text-green-400">1.1%</span><input type="range" id="i_poc" min="1" max="100" value="11" class="w-full"></div>
+        <div>🚨 SLP(噴發) <span id="v_slp" class="text-red-500">-15%</span><input type="range" id="i_slp" min="5" max="50" value="15" class="w-full"></div>
+        <div>🚀 DRV(真空) <span id="v_drv" class="text-blue-400">90</span><input type="range" id="i_drv" min="10" max="150" value="90" class="w-full"></div>
+        <div>⚡ MOM(均線) <span id="v_mom" class="text-orange-500">0.8%</span><input type="range" id="i_mom" min="1" max="50" value="8" class="w-full"></div>
     </div>
 
     <div class="flex flex-1 overflow-hidden gap-2 mt-2">
         <main class="flex-1 overflow-y-auto p-2 grid grid-cols-4 gap-3 content-start" id="dashboard"></main>
-        <aside class="w-72 border-l border-yellow-900 bg-zinc-950 flex flex-col">
-            <div class="p-2 border-b border-zinc-800 text-red-500 font-bold uppercase tracking-tighter">🛡️ 巨鯨與清算即時流</div>
+        <aside class="w-80 border-l border-yellow-900 bg-zinc-950 flex flex-col">
+            <div class="p-2 border-b border-zinc-800 text-red-500 font-black uppercase flex justify-between">
+                <span>🛡️ 巨鯨與清算日誌</span>
+                <span id="flowAvg" class="text-zinc-500 text-[8px]">FLOW: 0.00</span>
+            </div>
             <div id="logBox" class="flex-1 overflow-y-auto p-2 space-y-1 text-[9px]"></div>
         </aside>
     </div>
 
 <script>
-    let stats = {}, activeWS = new Map();
+    let isRunning = false, stats = {}, activeWS = new Map();
     let FILTER = { SQZ: 0.012, POC: 0.011, SLP: -0.15, DRV: 90, MOM: 0.008 };
     let searchFilter = "";
-    let isFetching = false;
 
     // [H] 週六/週一策略自動化
     function applyDateStrategy() {
-        const day = new Date().getDay(); // 0:週日, 1:週一, 6:週六
-        const notice = document.getElementById('dateNotice');
-        if (day === 6) {
-            notice.innerText = "📅 週六模式：強化 Tight 埋伏";
+        const day = new Date().getDay(); 
+        const notice = document.getElementById('strategyNotice');
+        if (day === 6) { 
+            notice.innerText = "📅 週六模式：高勝率緊湊數據";
             FILTER.SQZ = 0.008; document.getElementById('i_sqz').value = 8;
             document.getElementById('v_sqz').innerText = "0.8%";
         } else if (day === 1) {
-            notice.innerText = "📅 週一模式：強化真空突破";
+            notice.innerText = "📅 週一模式：高勝率放量突破";
             FILTER.POC = 0.015; document.getElementById('i_poc').value = 15;
             document.getElementById('v_poc').innerText = "1.5%";
         } else {
-            notice.innerText = "📅 常規監控模式";
+            notice.innerText = "📅 實時全功能掃描中";
         }
     }
 
-    // [A-1] 第一封包：全場初篩
-    async function fetchTickerPacket() {
-        if (isFetching) return;
-        isFetching = true;
+    function toggleRadar(state) {
+        isRunning = state;
+        document.getElementById('startBtn').classList.toggle('hidden', state);
+        document.getElementById('stopBtn').classList.toggle('hidden', !state);
+        if(state) { updateStatus("ONLINE", "text-green-400"); fetchPacketOne(); fetchPacketTwo(); }
+        else { updateStatus("OFFLINE", "text-zinc-500"); }
+    }
+
+    // [A-1] 封包一：三秒一發 (價格+資費+基礎算分)
+    async function fetchPacketOne() {
+        if (!isRunning) return;
         try {
             const [tRes, pRes] = await Promise.all([
                 fetch('https://fapi.binance.com/fapi/v1/ticker/24hr'),
                 fetch('https://fapi.binance.com/fapi/v1/premiumIndex')
             ]);
-            if (tRes.status === 418) throw "418";
-
             const tickers = await tRes.json();
             const premiums = await pRes.json();
             const pMap = Object.fromEntries(premiums.map(p => [p.symbol, p.lastFundingRate]));
 
             tickers.forEach(t => {
-                const s = t.symbol;
-                if (!s.endsWith('USDT')) return;
-                const p = parseFloat(t.lastPrice);
-                const h = parseFloat(t.highPrice);
-                const l = parseFloat(t.lowPrice);
+                const s = t.symbol; if (!s.endsWith('USDT')) return;
+                const p = parseFloat(t.lastPrice), h = parseFloat(t.highPrice), l = parseFloat(t.lowPrice);
                 
-                // [C] 瀏覽器後台算分 (不消耗請求)
                 let score = 0;
-                const sqzVal = (h - l) / p;
-                if (sqzVal <= FILTER.SQZ) score += 40;
-                if (Math.abs(t.priceChangePercent) > 1.5) score += 20;
+                const range = (h - l) / p;
+                if (range <= FILTER.SQZ) score += 40;
+                if (Math.abs(t.priceChangePercent) > 2) score += 20;
                 
-                if (!stats[s]) stats[s] = { s, score: 0, price: p, liq: 0, wallP: 0, wallV: 0, funding: 0 };
-                stats[s] = { ...stats[s], price: p, score: score, funding: pMap[s] || 0, isVacuum: (h - p)/p < 0.01 };
+                if (!stats[s]) stats[s] = { s, score:0, price:p, funding:0, liq:0, buyVol:0, sellVol:0, wallP:0, wallV:0 };
+                stats[s] = { ...stats[s], price:p, score, funding: pMap[s]||0, isVacuum: (h-p)/p < 0.01, vol: parseFloat(t.quoteVolume) };
             });
             renderUI();
             updateStatus("Packet 1: OK", "text-green-400");
-        } catch (e) { updateStatus("API Overload (418)", "text-red-500"); }
-        isFetching = false;
-        setTimeout(fetchTickerPacket, 3000);
+        } catch(e){}
+        setTimeout(fetchPacketOne, 3000);
     }
 
-    // [A-2] 第二封包：後台選完後打包更新 (深度數據)
-    async function fetchBatchDepth() {
-        // 後台選出前 10 名
-        const topSymbols = Object.values(stats).sort((a,b) => b.score - a.score).slice(0, 10);
+    // [A-2] 封包二：後台選完後打包 (深度掛單牆 + WebSocket 巨鯨連線管理)
+    async function fetchPacketTwo() {
+        if (!isRunning) return;
+        const sortedCoins = Object.values(stats).sort((a,b) => b.score - a.score);
+        const topSymbols = sortedCoins.slice(0, 10);
         
-        // 打包這 10 個幣，依序獲取 (透過 await 確保一秒只有兩個)
+        // 1. 打包更新深度 (REST)
         for (const item of topSymbols) {
+            if (!isRunning) break;
             try {
                 const res = await fetch(`https://fapi.binance.com/fapi/v1/depth?symbol=${item.s}&limit=5`);
                 const d = await res.json();
                 const topWall = [...d.asks, ...d.bids].sort((a,b) => b[1]-a[1])[0];
                 stats[item.s].wallP = topWall[0];
                 stats[item.s].wallV = topWall[0] * topWall[1];
-                
-                // 開啟該幣的 WebSocket (如果尚未開啟)
-                ensureWS(item.s);
-                await new Promise(r => setTimeout(r, 500)); // 每個幣之間喘息 500ms
+                ensureWS(item.s); // 確保這些幣有巨鯨監控
             } catch(e){}
+            await new Promise(r => setTimeout(r, 600)); 
         }
-        updateStatus("Packet 2: Batch OK", "text-blue-400");
-        setTimeout(fetchBatchDepth, 6000); // 深度數據不需太頻繁
+
+        // 2. 自動斷開非潛力幣的連線 (節省效能)
+        activeWS.forEach((ws, sym) => {
+            if (!topSymbols.find(x => x.s === sym)) { ws.close(); activeWS.delete(sym); }
+        });
+
+        updateStatus("Packet 2: BATCH OK", "text-blue-400");
+        setTimeout(fetchPacketTwo, 6000);
     }
 
+    // [E] 巨鯨核心：多維度大單與爆倉判定
     function ensureWS(s) {
         if (activeWS.has(s)) return;
         const ws = new WebSocket(`wss://fstream.binance.com/ws/${s.toLowerCase()}@aggTrade/${s.toLowerCase()}@forceOrder`);
         ws.onmessage = (e) => {
             const d = JSON.parse(e.data);
+            // 處理爆倉 (Liquidation)
             if (d.e === "forceOrder") {
                 const val = parseFloat(d.o.q) * parseFloat(d.o.p);
                 stats[s].liq += val;
-                addLog(`💀 [清算] ${s} $${(val/1000).toFixed(1)}K`, "text-red-500 font-bold");
+                addLog(`💀 [爆倉] ${s} | $${(val/1000).toFixed(1)}K | ${d.o.S}`, "text-red-500 font-bold");
+            }
+            // 處理大單 (Whale aggTrade)
+            if (d.e === "aggTrade") {
+                const amount = parseFloat(d.q) * parseFloat(d.p);
+                if (amount > 50000) { // 巨鯨門檻: 5萬美金
+                    const side = d.m ? "SELL" : "BUY";
+                    if (side === "BUY") stats[s].buyVol += amount; else stats[s].sellVol += amount;
+                    const color = side === "BUY" ? "text-green-400" : "text-orange-600";
+                    addLog(`🐋 [巨鯨] ${s} | $${(amount/1000).toFixed(0)}K | ${side}`, color);
+                }
             }
         };
         activeWS.set(s, ws);
@@ -145,58 +168,54 @@
         const dashboard = document.getElementById('dashboard');
         let list = Object.values(stats);
         if (searchFilter) list = list.filter(x => x.s.includes(searchFilter));
-        const sorted = list.sort((a,b) => b.score - a.score).slice(0, 40);
+        const sorted = list.sort((a,b) => b.score - a.score).slice(0, 48);
         
-        dashboard.innerHTML = sorted.map(x => `
-            <div class="card p-3 ${x.score >= 50 ? 'tight-zone' : ''}">
-                <div class="flex justify-between items-start font-black">
-                    <span class="text-base text-white">${x.s.replace('USDT','')}</span>
+        dashboard.innerHTML = sorted.map(x => {
+            const flow = x.buyVol - x.sellVol;
+            return `
+            <div class="card p-3 ${x.score >= 50 ? 'tight-zone' : ''} ${x.vol > 8e8 ? 'monster-boost' : ''}">
+                <div class="flex justify-between font-black">
+                    <span class="text-white">${x.s.replace('USDT','')}</span>
                     <span class="text-yellow-500">★ ${x.score}</span>
                 </div>
-                <div class="text-2xl font-black text-white mt-1 mb-2">$${x.price.toLocaleString()}</div>
-                <div class="flex justify-between text-[8px] mb-2 font-bold">
+                <div class="text-2xl font-black text-white my-1">$${x.price}</div>
+                <div class="flex justify-between text-[8px] mb-2 font-bold uppercase">
                     <span class="${x.funding < 0 ? 'text-red-500' : 'text-green-500'}">資費: ${(x.funding*100).toFixed(4)}%</span>
-                    ${x.isVacuum ? '<span class="text-blue-400 italic">VACUUM</span>' : ''}
+                    ${x.isVacuum ? '<span class="bg-blue-600 text-white px-1">VACUUM</span>' : ''}
+                    <span class="${flow > 0 ? 'text-green-400' : 'text-red-400'}">FLOW: ${(flow/1000).toFixed(0)}K</span>
                 </div>
                 <div class="grid grid-cols-2 gap-1">
-                    <div class="metric-box"><span class="block text-zinc-600">WALL PRICE</span><span class="text-blue-400 font-bold">$${parseFloat(x.wallP).toFixed(4)}</span></div>
-                    <div class="metric-box"><span class="block text-zinc-600">WALL VALUE</span><span class="text-blue-200 font-bold">${x.wallV >= 1e6 ? (x.wallV/1e6).toFixed(1)+'M' : (x.wallV/1e3).toFixed(0)+'K'}</span></div>
-                    <div class="metric-box"><span class="block text-zinc-600">LIQUIDATION</span><span class="text-red-500 font-bold">$${(x.liq/1e3).toFixed(1)}K</span></div>
+                    <div class="metric-box text-zinc-600">WALL PRICE<br><span class="text-blue-400 font-bold">$${parseFloat(x.wallP).toFixed(4)}</span></div>
+                    <div class="metric-box text-zinc-600">LIQUIDATION<br><span class="text-red-500 font-bold">$${(x.liq/1000).toFixed(1)}K</span></div>
                 </div>
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
     }
 
-    // [G] 參數鈕初始化
-    function init() {
-        const sliders = ['i_sqz', 'i_poc', 'i_slp', 'i_drv', 'i_mom'];
-        sliders.forEach(id => {
-            document.getElementById(id).oninput = (e) => {
-                const key = id.split('_')[1].toUpperCase();
-                const val = parseFloat(e.target.value);
-                FILTER[key] = (key === 'SLP' ? -(val/100) : val / 1000);
-                document.getElementById('v_'+id.split('_')[1]).innerText = (val/10).toFixed(1) + (key==='DRV'?'':'%');
-                renderUI();
-            };
-        });
-        document.getElementById('searchInput').oninput = (e) => { searchFilter = e.target.value.toUpperCase(); renderUI(); };
-        applyDateStrategy();
-        fetchTickerPacket();
-        fetchBatchDepth();
-    }
+    const sliders = ['i_sqz', 'i_poc', 'i_slp', 'i_drv', 'i_mom'];
+    sliders.forEach(id => {
+        document.getElementById(id).oninput = (e) => {
+            const key = id.split('_')[1].toUpperCase();
+            const val = parseFloat(e.target.value);
+            FILTER[key] = (key === 'SLP' ? -(val/100) : val / 1000);
+            document.getElementById('v_'+id.split('_')[1]).innerText = (val/10).toFixed(1) + (key==='DRV'?'':'%');
+            renderUI();
+        };
+    });
+    document.getElementById('searchInput').oninput = (e) => { searchFilter = e.target.value.toUpperCase(); renderUI(); };
 
     function addLog(m, c) {
         const b = document.getElementById('logBox');
         const d = document.createElement('div');
-        d.className = `p-1 border-b border-zinc-900 ${c}`;
+        d.className = `${c}`;
         d.innerHTML = `[${new Date().toLocaleTimeString()}] ${m}`;
         b.prepend(d);
-        if(b.childNodes.length > 30) b.removeChild(b.lastChild);
+        if(b.childNodes.length > 50) b.removeChild(b.lastChild);
     }
 
     function updateStatus(m, c) { const s = document.getElementById('apiStatus'); s.innerText = m; s.className = `bg-zinc-800 px-4 py-1 rounded font-bold uppercase ${c}`; }
 
-    init();
+    applyDateStrategy();
 </script>
 </body>
 </html>
