@@ -2,126 +2,121 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ 趨勢改變 | V13.0 WEBSOCKET</title>
+    <title>⚡ 趨勢改變 V14.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
-        body { background: #050505; color: #FFD700; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
-        .card { background: #0a0a0a; border: 1px solid #1a1a1a; transition: 0.2s; cursor: pointer; }
-        .hunt-card { border: 2px solid #ff0000; background: linear-gradient(135deg, #300 0%, #000 100%) !important; animation: blink 0.8s infinite; }
-        .warn-card { border: 1px solid #3b82f6; background: #081221 !important; }
-        .pinned { border: 2px solid #f0b90b !important; }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&display=swap');
+        body { background: #000; color: #fbbf24; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
+        .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; padding: 1rem; }
+        .card { background: #0a0a0a; border: 1px solid #222; padding: 1rem; border-radius: 4px; transition: 0.2s; }
+        .liq-alert { border: 2px solid #ef4444 !important; background: #200 !important; animation: pulse 0.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+        .log-entry { border-left: 3px solid #ef4444; background: #111; padding: 0.5rem; margin-bottom: 0.5rem; font-size: 10px; }
     </style>
 </head>
-<body class="h-screen flex flex-col text-[10px]">
+<body class="h-screen flex flex-col">
 
-    <header class="p-4 border-b border-yellow-900 bg-black flex justify-between items-center shrink-0">
-        <div class="flex items-center gap-4">
-            <h1 class="text-2xl font-black text-yellow-500 italic uppercase">⚡ Trend Shift V13</h1>
-            <input id="searchInput" type="text" placeholder="快速搜尋/添加..." class="bg-zinc-900 px-3 py-1 rounded border border-zinc-700 text-white w-48">
-        </div>
-        <div class="flex gap-4 items-center font-bold">
-            <div id="wsStatus" class="flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-red-600"></span>
-                <span class="text-zinc-500 uppercase">WS DISCONNECTED</span>
-            </div>
-            <button id="sysBtn" onclick="toggleSystem()" class="bg-yellow-600 text-black px-8 py-1.5 rounded uppercase font-black hover:bg-yellow-500">Enable Monitoring</button>
+    <header class="p-4 border-b border-zinc-800 flex justify-between items-center bg-black">
+        <h1 class="text-xl font-black italic">⚡ 趨勢改變 V14.0 (WS版)</h1>
+        <div class="flex gap-4 items-center">
+            <span id="status" class="text-[10px] text-zinc-500 uppercase">準備就緒</span>
+            <button id="ctrlBtn" onclick="toggleSystem()" class="bg-fbbf24 text-black px-6 py-1 font-bold rounded hover:bg-yellow-500">啟動監控</button>
         </div>
     </header>
 
     <div class="flex flex-1 overflow-hidden">
-        <main class="flex-1 p-4 overflow-y-auto bg-black">
-            <div id="dashboard" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs"></div>
-        </main>
-        <aside class="w-80 border-l border-yellow-900 bg-zinc-950 p-3 flex flex-col shrink-0">
-            <h3 class="text-red-500 font-black mb-3 border-b border-zinc-800 pb-2 uppercase">Liquidation Log</h3>
-            <div id="logContainer" class="flex-1 overflow-y-auto space-y-2"></div>
+        <main id="dashboard" class="flex-1 grid-container overflow-y-auto"></main>
+        <aside class="w-80 border-l border-zinc-800 bg-zinc-950 p-4 flex flex-col">
+            <h2 class="text-red-500 font-bold mb-4 text-sm uppercase">清算異常日誌</h2>
+            <div id="log" class="flex-1 overflow-y-auto"></div>
         </aside>
     </div>
 
 <script>
     const API_BASE = 'https://api.binance.com';
     const WS_BASE = 'wss://stream.binance.com:9443/ws';
-    let socket = null;
     let isRunning = false;
-    let symbolData = {}; // 存儲各幣種支撐位與均量
-    let pinned = new Set(JSON.parse(localStorage.getItem('pinned_v13')) || ['BNBUSDT', 'ADAUSDT', 'LTCUSDT', 'NEOUSDT']);
+    let socket = null;
+    let dataMap = {};
+    
+    // 你指定的監控目標（可自由增減）
+    const SYMBOLS = ['PIPPINUSDT', 'BNBUSDT', 'ADAUSDT', 'LTCUSDT', 'NEOUSDT', 'QTUMUSDT'];
 
-    // 1. 啟動系統：一次性獲取 K 線基礎數據
-    async function startSystem() {
-        updateWSStatus('Initializing...', 'text-yellow-500', 'bg-yellow-500');
-        
-        for (let s of pinned) {
+    // 1. 初始化支撐位 (僅在啟動時執行一次，不重複請求)
+    async function initBaseData() {
+        document.getElementById('status').innerText = "正在建立支撐基準...";
+        for (let s of SYMBOLS) {
             try {
                 const res = await fetch(`${API_BASE}/api/v3/klines?symbol=${s}&interval=15m&limit=50`);
                 const klines = await res.json();
                 const lows = klines.map(k => parseFloat(k[3]));
                 const volumes = klines.map(k => parseFloat(k[5]));
                 
-                symbolData[s] = {
-                    minLow: Math.min(...lows),
-                    avgVol: volumes.reduce((a, b) => a + b, 0) / volumes.length,
+                dataMap[s] = {
+                    symbol: s,
+                    support: Math.min(...lows), // 50根K線最低點
+                    avgVol: volumes.reduce((a, b) => a + b, 0) / volumes.length, // 平均成交量
                     price: 0,
-                    curVol: 0,
-                    volRatio: 0
+                    volRatio: 0,
+                    isLiq: false
                 };
-                // 每獲取一個基礎數據休息 100ms，僅此一次
-                await new Promise(r => setTimeout(r, 100));
-            } catch (e) { console.error(`Failed to init ${s}`); }
+                // 每個幣種間隔 200ms，防止初始請求過快
+                await new Promise(r => setTimeout(r, 200));
+            } catch (e) { console.error(`${s} 初始化失敗`); }
         }
-        
-        connectWebSocket();
+        startWebSocket();
     }
 
-    // 2. 建立 WebSocket 連接：取代頻繁的 API 請求
-    function connectWebSocket() {
-        if (socket) socket.close();
-        
-        // 組合訂閱字串：例如 bnbusdt@ticker/adausdt@ticker...
-        const streams = [...pinned].map(s => `${s.toLowerCase()}@ticker`).join('/');
+    // 2. WebSocket 接收數據 (這解決了你截圖中 fetch 爆量的問題)
+    function startWebSocket() {
+        const streams = SYMBOLS.map(s => `${s.toLowerCase()}@ticker`).join('/');
         socket = new WebSocket(`${WS_BASE}/${streams}`);
 
-        socket.onopen = () => updateWSStatus('Live Streaming', 'text-green-500', 'bg-green-500');
-        
+        socket.onopen = () => { document.getElementById('status').innerText = "WS 連線正常 - 監控中"; };
+
         socket.onmessage = (event) => {
             const msg = JSON.parse(event.data);
-            const s = msg.s; // Symbol
-            if (!symbolData[s]) return;
+            const s = msg.s;
+            const target = dataMap[s];
+            if (!target) return;
 
-            const price = parseFloat(msg.c);
-            const vol24h = parseFloat(msg.v);
-            const curVol15m = vol24h / 96; // 估算 15m 量能
+            target.price = parseFloat(msg.c);
+            const curVol = parseFloat(msg.v) / 96; // 換算為 15m 估計量
+            target.volRatio = (curVol / target.avgVol).toFixed(2);
 
-            symbolData[s].price = price;
-            symbolData[s].volRatio = (curVol15m / symbolData[s].avgVol).toFixed(2);
-            symbolData[s].isLiq = price < symbolData[s].minLow && symbolData[s].volRatio > 2.0;
-            symbolData[s].isSqz = symbolData[s].volRatio < 0.5;
+            // 策略核心：價格 < 支撐 且 成交量 > 2.5倍均量
+            const priceDropped = target.price < target.support;
+            const volumeExploded = target.volRatio > 2.5;
 
-            if (symbolData[s].isLiq) addLog(s, price, symbolData[s].volRatio);
+            if (priceDropped && volumeExploded) {
+                if (!target.isLiq) {
+                    pushLog(s, target.price, target.volRatio);
+                    target.isLiq = true;
+                }
+            } else {
+                target.isLiq = false;
+            }
             render();
         };
-
-        socket.onerror = () => updateWSStatus('WS Error', 'text-red-500', 'bg-red-600');
-        socket.onclose = () => updateWSStatus('WS Closed', 'text-zinc-500', 'bg-red-600');
     }
 
     function render() {
-        const dashboard = document.getElementById('dashboard');
-        dashboard.innerHTML = [...pinned].map(s => {
-            const x = symbolData[s] || { price: 'Loading...', volRatio: 0 };
+        const container = document.getElementById('dashboard');
+        container.innerHTML = SYMBOLS.map(s => {
+            const d = dataMap[s];
+            if (!d) return `<div class="card">載入中...</div>`;
             return `
-                <div class="card p-4 rounded-lg ${x.isLiq ? 'hunt-card' : (x.isSqz ? 'warn-card' : '')}" onclick="togglePin('${s}')">
-                    <div class="flex justify-between items-start mb-4">
-                        <span class="text-lg font-black text-white">${s.replace('USDT','')}</span>
-                        <span class="text-yellow-500 font-black">${x.isLiq ? 'LIQ' : (x.isSqz ? 'SQZ' : '')}</span>
+                <div class="card ${d.isLiq ? 'liq-alert' : ''}">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-white text-lg font-bold">${s}</span>
+                        <span class="text-[10px] bg-zinc-800 px-2 py-0.5 text-zinc-400">15M 監控</span>
                     </div>
-                    <div class="space-y-2">
-                        <div class="flex justify-between uppercase text-zinc-500 font-bold"><span>Price</span><span class="text-white">${x.price}</span></div>
-                        <div class="flex justify-between uppercase text-zinc-500 font-bold"><span>Support</span><span class="text-zinc-400">${x.minLow || '---'}</span></div>
-                        <div class="flex justify-between uppercase text-zinc-500 font-bold border-t border-zinc-900 pt-2">
-                            <span>Vol Ratio</span>
-                            <span class="${x.volRatio > 1.5 ? 'text-red-500' : 'text-blue-500'}">${x.volRatio}x</span>
+                    <div class="space-y-2 text-[11px]">
+                        <div class="flex justify-between"><span>當前價格</span><span class="text-white font-bold">${d.price}</span></div>
+                        <div class="flex justify-between"><span>支撐位(50K)</span><span class="text-zinc-500">${d.support}</span></div>
+                        <div class="flex justify-between border-t border-zinc-900 pt-2">
+                            <span>量能強度</span>
+                            <span class="${d.volRatio > 2.5 ? 'text-red-500' : 'text-green-500'} font-bold">${d.volRatio}x</span>
                         </div>
                     </div>
                 </div>
@@ -129,41 +124,27 @@
         }).join('');
     }
 
-    function updateWSStatus(text, textColor, bgColor) {
-        const el = document.getElementById('wsStatus');
-        el.className = `flex items-center gap-2 ${textColor}`;
-        el.innerHTML = `<span class="w-2 h-2 rounded-full ${bgColor}"></span><span class="uppercase">${text}</span>`;
-    }
-
-    function addLog(s, p, r) {
-        const container = document.getElementById('logContainer');
-        if (document.getElementById(`log-${s}`)) return;
+    function pushLog(s, p, r) {
+        const log = document.getElementById('log');
         const entry = document.createElement('div');
-        entry.id = `log-${s}`;
-        entry.className = `p-3 bg-zinc-900 border-l-4 border-red-600 animate-pulse text-[11px]`;
-        entry.innerHTML = `<div class="font-black text-red-500 uppercase">${s} Liquidation Detected</div>
-                           <div class="text-zinc-400">Price broken at ${p} with ${r}x volume surge.</div>`;
-        container.prepend(entry);
+        entry.className = 'log-entry';
+        entry.innerHTML = `<div>🚨 <b>${s}</b> 觸發清算型態</div>
+                           <div class="text-zinc-500">價格: ${p} | 量能: ${r}x | 時間: ${new Date().toLocaleTimeString()}</div>`;
+        log.prepend(entry);
     }
 
     function toggleSystem() {
         isRunning = !isRunning;
-        const btn = document.getElementById('sysBtn');
+        const btn = document.getElementById('ctrlBtn');
         if (isRunning) {
-            btn.innerText = "Stop Monitoring";
-            btn.className = "bg-red-600 text-white px-8 py-1.5 rounded uppercase font-black";
-            startSystem();
+            btn.innerText = "停止監控";
+            btn.className = "bg-red-600 text-white px-6 py-1 font-bold rounded";
+            initBaseData();
         } else {
             if (socket) socket.close();
-            btn.innerText = "Enable Monitoring";
-            btn.className = "bg-yellow-600 text-black px-8 py-1.5 rounded uppercase font-black";
+            location.reload(); // 簡單重置
         }
     }
-
-    function togglePin(s) { /* 移除邏輯與 V12 相同 */ }
-
-    // 初始化介面
-    render();
 </script>
 </body>
 </html>
