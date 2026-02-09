@@ -2,145 +2,120 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ TRIDENT V23 - 穩定修復版</title>
+    <title>⚡ TRIDENT V25 - LIQUIDATION FOCUS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background: #000; color: #fbbf24; font-family: 'JetBrains Mono', monospace; }
-        .card { border: 1px solid #1a1a1a; background: #050505; border-radius: 4px; padding: 15px; }
-        .liq-glow { border: 2px solid #ff4444; box-shadow: 0 0 15px #900; background: #1a0000 !important; }
-        .btn-active { background: #ca8a04; color: black; font-weight: 900; }
-        .btn-active:hover { background: #facc15; }
-        .btn-disabled { background: #3f3f46; color: #71717a; cursor: not-allowed; }
+        body { background: #000; color: #e4e4e7; font-family: 'JetBrains Mono', monospace; }
+        .card { background: #09090b; border: 1px solid #18181b; transition: all 0.5s ease; opacity: 0; transform: translateY(20px); }
+        .card-show { opacity: 1; transform: translateY(0); } /* 只有量大的幣會浮現 */
+        .liq-alert { border: 2px solid #ef4444 !important; background: #450a0a !important; animation: flash 0.5s infinite; }
+        @keyframes flash { 0%, 100% { border-color: #ef4444; } 50% { border-color: #fff; } }
     </style>
 </head>
 <body class="p-6">
 
-    <header class="flex justify-between items-center border-b border-zinc-900 pb-5 mb-8">
+    <header class="flex justify-between items-center border-b border-zinc-800 pb-5 mb-6">
         <div>
-            <h1 class="text-2xl font-black italic tracking-tighter text-yellow-500">TRIDENT V23.0</h1>
-            <p id="msgBar" class="text-[10px] text-zinc-500 uppercase mt-1">系統就緒 | 準備執行 Java 核心邏輯</p>
+            <h1 class="text-2xl font-black italic text-white tracking-tighter text-red-600">LIQUIDATOR V25</h1>
+            <p class="text-[10px] text-zinc-500 uppercase mt-1">策略：縮量橫盤 ➔ 放量跌破前低 (清算多單)</p>
         </div>
-        <button id="mainBtn" onclick="runEngine()" class="btn-active px-10 py-2 rounded">啟動戰鬥監控</button>
+        <button id="startBtn" onclick="ignite()" class="bg-zinc-900 text-white px-8 py-2 font-black rounded border border-zinc-700 hover:bg-red-700">掃描全市場</button>
     </header>
 
-    <div id="dashboard" class="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-6"></div>
+    <div id="monitorList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"></div>
 
 <script>
-    // 嚴格保留你的策略變數
-    const SYMBOLS = ["PIPPINUSDT", "BNBUSDT", "ADAUSDT", "LTCUSDT", "NEOUSDT", "QTUMUSDT"];
-    const LOOKBACK = 50; 
-    const VOL_THRESHOLD = 2.5;
-    
-    let store = {};
-    let ws = null;
+    const EXCLUDE = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT']; 
+    let baselineData = {}; 
+    const VOL_TRIGGER = 1.2; // 量能開始比平均大 20% 就顯示在畫面上
+    const LIQ_TRIGGER = 2.5; // 量能超過 2.5 倍且破低則觸發警告
 
-    async function runEngine() {
-        const btn = document.getElementById('mainBtn');
-        const msg = document.getElementById('msgBar');
-        
-        btn.disabled = true;
-        btn.className = "btn-disabled px-10 py-2 rounded";
-        btn.innerText = "載入基線中...";
+    async function ignite() {
+        document.getElementById('startBtn').innerText = "數據庫建立中...";
+        const res = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
+        const targets = (await res.json())
+            .filter(s => s.symbol.endsWith('USDT') && !EXCLUDE.includes(s.symbol))
+            .sort((a,b) => b.quoteVolume - a.quoteVolume).slice(0, 100);
 
-        for (const s of SYMBOLS) {
-            msg.innerText = `正在初始化 ${s}... (請觀察 Network 面板)`;
-            try {
-                // 增加間隔至 800ms，徹底解決 400 報錯
-                await new Promise(r => setTimeout(r, 800));
-
-                const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${s}&interval=15m&limit=${LOOKBACK}`);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
-                
-                // 還原 Java 邏輯：calculateBaseLine
-                const lows = data.map(k => parseFloat(k[3]));
-                const volumes = data.map(k => parseFloat(k[5]));
-                
-                store[s] = {
-                    support: Math.min(...lows),
-                    avgVol: volumes.reduce((a, b) => a + b, 0) / volumes.length,
-                    price: 0,
-                    currentVol: 0,
-                    isAlert: false
+        for(let i=0; i<targets.length; i+=5) {
+            await Promise.all(targets.slice(i, i+5).map(async (t) => {
+                const kRes = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${t.symbol}&interval=15m&limit=50`);
+                const klines = await kRes.json();
+                const lows = klines.map(k => parseFloat(k[3]));
+                const volumes = klines.map(k => parseFloat(k[5]));
+                baselineData[t.symbol] = {
+                    support: Math.min(...lows), // 前低點
+                    avgVol: volumes.reduce((a, b) => a + b, 0) / volumes.length
                 };
-                
-                renderCard(s);
-            } catch (err) {
-                // 容錯：失敗時按鈕恢復，讓你可以再點一次
-                console.error(`失敗幣種: ${s}`, err);
-                msg.innerHTML = `<span class="text-red-500">錯誤: ${s} 請求失敗 (${err.message})。請檢查網路或稍後重試。</span>`;
-                btn.disabled = false;
-                btn.className = "btn-active px-10 py-2 rounded";
-                btn.innerText = "重試啟動";
-                return; 
-            }
+            }));
+            await new Promise(r => setTimeout(r, 300));
         }
-
-        btn.innerText = "監控中 (WS)";
-        msg.innerText = "基線建立完成。已切換至 WebSocket 持續數據流，無須重複 HTTP 請求。";
-        connectWS();
+        document.getElementById('startBtn').style.display = 'none';
+        startStream();
     }
 
-    function connectWS() {
-        const streams = SYMBOLS.map(s => `${s.toLowerCase()}@ticker`).join('/');
-        ws = new WebSocket(`wss://stream.binance.com:9443/ws/${streams}`);
-
+    function startStream() {
+        const ws = new WebSocket(`wss://fstream.binance.com/ws/!ticker@arr`);
         ws.onmessage = (e) => {
             const data = JSON.parse(e.data);
-            const s = data.s;
-            const d = store[s];
-            if (!d) return;
+            data.forEach(msg => {
+                const s = msg.s;
+                const base = baselineData[s];
+                if(!base) return;
 
-            // 還原 Java 邏輯：detectLiquidation
-            d.price = parseFloat(data.c);
-            d.currentVol = parseFloat(data.v) / 96; // 核心 1/96 換算
+                const price = parseFloat(msg.c);
+                const currentVol = parseFloat(msg.q) / 1440; // 24h量轉為每分鐘預估量 (更敏感)
+                const volRatio = currentVol / (base.avgVol / 15); // 與 15m 均量做比較
 
-            const priceDropped = d.price < d.support;
-            const volumeExploded = d.currentVol > (d.avgVol * VOL_THRESHOLD);
-            d.isAlert = priceDropped && volumeExploded;
+                // 策略過濾：只有成交量開始變大的幣對才顯示 (二次過濾)
+                const shouldShow = volRatio > VOL_TRIGGER;
+                const isLiq = (price < base.support) && (volRatio > LIQ_TRIGGER);
 
-            updateUI(s);
+                updateUI(s, price, volRatio, isLiq, shouldShow, base.support);
+            });
         };
     }
 
-    function renderCard(s) {
-        const dash = document.getElementById('dashboard');
-        if (document.getElementById(`card-${s}`)) return;
-        const div = document.createElement('div');
-        div.id = `card-${s}`;
-        div.className = "card";
-        dash.appendChild(div);
-    }
+    function updateUI(s, price, ratio, isLiq, shouldShow, support) {
+        let el = document.getElementById(`card-${s}`);
+        
+        if (!shouldShow && !el) return; // 量不大且沒建立過卡片就不理它
 
-    function updateUI(s) {
-        const el = document.getElementById(`card-${s}`);
-        const d = store[s];
-        el.className = `card ${d.isAlert ? 'liq-glow' : ''}`;
+        if (!el) {
+            el = document.createElement('div');
+            el.id = `card-${s}`;
+            document.getElementById('monitorList').appendChild(el);
+        }
+
+        // 如果成交量縮小回去了，就隱藏它
+        if (!shouldShow && !isLiq) {
+            el.classList.remove('card-show');
+            setTimeout(() => el.remove(), 500);
+            return;
+        }
+
+        el.className = `card p-5 rounded-lg card-show ${isLiq ? 'liq-alert' : ''}`;
         el.innerHTML = `
-            <div class="flex justify-between items-center mb-4">
-                <span class="text-xl font-black text-white italic">${s.replace('USDT','')}</span>
-                <span class="text-[9px] px-2 py-0.5 border border-zinc-800 rounded text-zinc-500 uppercase">15M Live</span>
+            <div class="flex justify-between items-center mb-3">
+                <span class="text-xl font-bold italic text-white">${s.replace('USDT','')}</span>
+                <span class="text-[10px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-400">VOL INCREASING</span>
             </div>
-            <div class="space-y-3 font-mono">
-                <div class="flex justify-between text-xs">
-                    <span class="text-zinc-500 uppercase">Price</span>
-                    <span class="text-white font-bold">${d.price || '---'}</span>
+            <div class="space-y-2 text-[12px] font-mono">
+                <div class="flex justify-between">
+                    <span class="text-zinc-500">PRICE</span>
+                    <span class="${price < support ? 'text-red-500 font-bold' : 'text-white'}">${price}</span>
                 </div>
-                <div class="flex justify-between text-xs">
-                    <span class="text-zinc-500 uppercase">Support</span>
-                    <span class="text-zinc-400 font-bold">${d.support.toFixed(4)}</span>
+                <div class="flex justify-between">
+                    <span class="text-zinc-500">PREV LOW</span>
+                    <span class="text-zinc-400">${support.toFixed(4)}</span>
                 </div>
-                <div class="pt-3 border-t border-zinc-900 mt-2">
-                    <div class="flex justify-between items-baseline mb-1">
-                        <span class="text-[10px] text-zinc-600 uppercase">Vol (1/96)</span>
-                        <span class="text-lg font-black ${d.currentVol > (d.avgVol * VOL_THRESHOLD) ? 'text-red-500' : 'text-blue-500'}">
-                            ${d.currentVol.toFixed(2)}
-                        </span>
+                <div class="pt-3 border-t border-zinc-900 mt-2 flex justify-between items-end">
+                    <div class="text-[10px] text-zinc-500">VOL MOMENTUM</div>
+                    <div class="text-lg font-black ${ratio > LIQ_TRIGGER ? 'text-red-500' : 'text-blue-500'}">
+                        ${ratio.toFixed(2)}x
                     </div>
-                    <div class="text-[9px] text-zinc-700 text-right uppercase">Threshold: ${(d.avgVol * VOL_THRESHOLD).toFixed(2)}</div>
                 </div>
             </div>
-            ${d.isAlert ? '<div class="mt-4 text-center text-red-500 font-black animate-pulse text-[10px] italic">⚠️ LIQUIDATION DETECTED!</div>' : ''}
         `;
     }
 </script>
