@@ -2,72 +2,63 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ TRIDENT V22 - 最終修復版</title>
+    <title>⚡ TRIDENT V23 - 穩定修復版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background: #000; color: #fbbf24; font-family: 'JetBrains Mono', monospace; }
-        .card { border: 1px solid #222; background: #080808; border-radius: 4px; padding: 15px; }
-        .alert-active { border: 2px solid #f87171; background: #2a0808 !important; box-shadow: 0 0 15px #7f1d1d; }
-        .btn-ready { background: #ca8a04; color: black; font-weight: 900; transition: 0.2s; }
-        .btn-ready:hover { background: #facc15; }
-        .btn-loading { background: #3f3f46; color: #71717a; cursor: not-allowed; }
+        .card { border: 1px solid #1a1a1a; background: #050505; border-radius: 4px; padding: 15px; }
+        .liq-glow { border: 2px solid #ff4444; box-shadow: 0 0 15px #900; background: #1a0000 !important; }
+        .btn-active { background: #ca8a04; color: black; font-weight: 900; }
+        .btn-active:hover { background: #facc15; }
+        .btn-disabled { background: #3f3f46; color: #71717a; cursor: not-allowed; }
     </style>
 </head>
 <body class="p-6">
 
     <header class="flex justify-between items-center border-b border-zinc-900 pb-5 mb-8">
         <div>
-            <h1 class="text-2xl font-black italic tracking-tighter text-yellow-500">TRIDENT V22.0</h1>
-            <p id="msgBar" class="text-[10px] text-zinc-600 uppercase mt-1">系統就緒 | 準備執行 Java 監控邏輯</p>
+            <h1 class="text-2xl font-black italic tracking-tighter text-yellow-500">TRIDENT V23.0</h1>
+            <p id="msgBar" class="text-[10px] text-zinc-500 uppercase mt-1">系統就緒 | 準備執行 Java 核心邏輯</p>
         </div>
-        <button id="mainBtn" onclick="safeStart()" class="btn-ready px-8 py-2 rounded">啟動戰鬥監控</button>
+        <button id="mainBtn" onclick="runEngine()" class="btn-active px-10 py-2 rounded">啟動戰鬥監控</button>
     </header>
 
     <div id="dashboard" class="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-6"></div>
 
 <script>
-    // 嚴格遵循你的 Java 設定
+    // 嚴格保留你的策略變數
     const SYMBOLS = ["PIPPINUSDT", "BNBUSDT", "ADAUSDT", "LTCUSDT", "NEOUSDT", "QTUMUSDT"];
     const LOOKBACK = 50; 
-    const VOL_RATIO = 2.5;
+    const VOL_THRESHOLD = 2.5;
     
     let store = {};
     let ws = null;
 
-    async function safeStart() {
+    async function runEngine() {
         const btn = document.getElementById('mainBtn');
         const msg = document.getElementById('msgBar');
         
-        // 修正：按鈕不消失，改為讀取狀態
         btn.disabled = true;
-        btn.className = "btn-loading px-8 py-2 rounded";
-        btn.innerText = "序列載入中...";
-        
-        for (const s of SYMBOLS) {
-            msg.innerText = `正在向 BINANCE 請求 ${s} 歷史數據...`;
-            try {
-                // 參考 Victory 網站，加入物理延遲避免被鎖
-                await new Promise(r => setTimeout(r, 600));
+        btn.className = "btn-disabled px-10 py-2 rounded";
+        btn.innerText = "載入基線中...";
 
-                const url = `https://api.binance.com/api/v3/klines?symbol=${s}&interval=15m&limit=${LOOKBACK}`;
-                const res = await fetch(url);
-                
+        for (const s of SYMBOLS) {
+            msg.innerText = `正在初始化 ${s}... (請觀察 Network 面板)`;
+            try {
+                // 增加間隔至 800ms，徹底解決 400 報錯
+                await new Promise(r => setTimeout(r, 800));
+
+                const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${s}&interval=15m&limit=${LOOKBACK}`);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
                 
-                // 完全還原 Java: calculateBaseLine(String json)
-                let minLow = Infinity;
-                let totalVol = 0;
-                data.forEach(k => {
-                    const low = parseFloat(k[3]); // k[3] 是 Low
-                    const vol = parseFloat(k[5]); // k[5] 是 Volume
-                    if (low < minLow) minLow = low;
-                    totalVol += vol;
-                });
-
+                // 還原 Java 邏輯：calculateBaseLine
+                const lows = data.map(k => parseFloat(k[3]));
+                const volumes = data.map(k => parseFloat(k[5]));
+                
                 store[s] = {
-                    support: minLow,
-                    avgVol: totalVol / data.length,
+                    support: Math.min(...lows),
+                    avgVol: volumes.reduce((a, b) => a + b, 0) / volumes.length,
                     price: 0,
                     currentVol: 0,
                     isAlert: false
@@ -75,38 +66,37 @@
                 
                 renderCard(s);
             } catch (err) {
-                // 故障排除：如果失敗，恢復按鈕讓你可以重試，而不是卡死
+                // 容錯：失敗時按鈕恢復，讓你可以再點一次
                 console.error(`失敗幣種: ${s}`, err);
-                msg.innerText = `錯誤: ${s} 請求失敗 (${err.message})`;
+                msg.innerHTML = `<span class="text-red-500">錯誤: ${s} 請求失敗 (${err.message})。請檢查網路或稍後重試。</span>`;
                 btn.disabled = false;
-                btn.className = "btn-ready px-8 py-2 rounded";
+                btn.className = "btn-active px-10 py-2 rounded";
                 btn.innerText = "重試啟動";
                 return; 
             }
         }
 
-        btn.innerText = "監控運行中";
-        msg.innerText = "基線建立完成，開啟 WebSocket 即時數據流...";
-        startWS();
+        btn.innerText = "監控中 (WS)";
+        msg.innerText = "基線建立完成。已切換至 WebSocket 持續數據流，無須重複 HTTP 請求。";
+        connectWS();
     }
 
-    function startWS() {
+    function connectWS() {
         const streams = SYMBOLS.map(s => `${s.toLowerCase()}@ticker`).join('/');
         ws = new WebSocket(`wss://stream.binance.com:9443/ws/${streams}`);
 
         ws.onmessage = (e) => {
-            const msg = JSON.parse(e.data);
-            const s = msg.s;
+            const data = JSON.parse(e.data);
+            const s = data.s;
             const d = store[s];
             if (!d) return;
 
-            // 完全還原 Java: detectLiquidation(String json)
-            d.price = parseFloat(msg.c); // lastPrice
-            d.currentVol = parseFloat(msg.v) / 96; // 1/96 權重換算
+            // 還原 Java 邏輯：detectLiquidation
+            d.price = parseFloat(data.c);
+            d.currentVol = parseFloat(data.v) / 96; // 核心 1/96 換算
 
-            // 判斷條件
             const priceDropped = d.price < d.support;
-            const volumeExploded = d.currentVol > (d.avgVol * VOL_RATIO);
+            const volumeExploded = d.currentVol > (d.avgVol * VOL_THRESHOLD);
             d.isAlert = priceDropped && volumeExploded;
 
             updateUI(s);
@@ -125,32 +115,32 @@
     function updateUI(s) {
         const el = document.getElementById(`card-${s}`);
         const d = store[s];
-        el.className = `card ${d.isAlert ? 'alert-active' : ''}`;
+        el.className = `card ${d.isAlert ? 'liq-glow' : ''}`;
         el.innerHTML = `
-            <div class="flex justify-between items-start mb-4">
+            <div class="flex justify-between items-center mb-4">
                 <span class="text-xl font-black text-white italic">${s.replace('USDT','')}</span>
-                <span class="text-[9px] px-2 py-0.5 border border-zinc-800 rounded text-zinc-500 uppercase">Live</span>
+                <span class="text-[9px] px-2 py-0.5 border border-zinc-800 rounded text-zinc-500 uppercase">15M Live</span>
             </div>
             <div class="space-y-3 font-mono">
                 <div class="flex justify-between text-xs">
-                    <span class="text-zinc-500">當前價格</span>
-                    <span class="text-white font-bold">${d.price || '載入中'}</span>
+                    <span class="text-zinc-500 uppercase">Price</span>
+                    <span class="text-white font-bold">${d.price || '---'}</span>
                 </div>
                 <div class="flex justify-between text-xs">
-                    <span class="text-zinc-500">50K 支撐</span>
-                    <span class="text-zinc-400">${d.support.toFixed(4)}</span>
+                    <span class="text-zinc-500 uppercase">Support</span>
+                    <span class="text-zinc-400 font-bold">${d.support.toFixed(4)}</span>
                 </div>
-                <div class="pt-3 border-t border-zinc-900">
-                    <div class="flex justify-between items-baseline">
-                        <span class="text-[10px] text-zinc-600 uppercase">即時量能 (1/96)</span>
-                        <span class="text-lg font-black ${d.currentVol > (d.avgVol * VOL_RATIO) ? 'text-red-500' : 'text-blue-500'}">
+                <div class="pt-3 border-t border-zinc-900 mt-2">
+                    <div class="flex justify-between items-baseline mb-1">
+                        <span class="text-[10px] text-zinc-600 uppercase">Vol (1/96)</span>
+                        <span class="text-lg font-black ${d.currentVol > (d.avgVol * VOL_THRESHOLD) ? 'text-red-500' : 'text-blue-500'}">
                             ${d.currentVol.toFixed(2)}
                         </span>
                     </div>
-                    <div class="text-[9px] text-zinc-700 text-right">門檻: ${(d.avgVol * VOL_RATIO).toFixed(2)}</div>
+                    <div class="text-[9px] text-zinc-700 text-right uppercase">Threshold: ${(d.avgVol * VOL_THRESHOLD).toFixed(2)}</div>
                 </div>
             </div>
-            ${d.isAlert ? '<div class="mt-4 text-center text-red-500 font-black animate-pulse text-xs italic">⚠️ 偵測到清算型態！</div>' : ''}
+            ${d.isAlert ? '<div class="mt-4 text-center text-red-500 font-black animate-pulse text-[10px] italic">⚠️ LIQUIDATION DETECTED!</div>' : ''}
         `;
     }
 </script>
