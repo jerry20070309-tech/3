@@ -2,49 +2,38 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ 趨勢改變 | LIQUIDATION HUNTER V12.0</title>
+    <title>⚡ 趨勢改變 | V12.0 STABLE</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
         body { background: #050505; color: #FFD700; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
         .card { background: #0a0a0a; border: 1px solid #1a1a1a; transition: 0.3s; cursor: pointer; }
-        /* 正在清算：紅框閃爍 */
-        .hunt-card { border: 2px solid #ff0000; background: #2a0000 !important; box-shadow: 0 0 20px #ff0000; animation: blink 0.8s infinite; }
-        /* 縮量橫盤：藍框蓄勢 */
+        .hunt-card { border: 2px solid #ff0000; background: linear-gradient(135deg, #3a0000 0%, #0a0a0a 100%) !important; box-shadow: 0 0 15px rgba(255,0,0,0.3); }
         .warn-card { border: 1px solid #3b82f6; background: #081221 !important; }
-        .pinned { border: 2px solid #f0b90b !important; opacity: 1 !important; }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.8; } }
-        .tag-liq { background: #ff0000; color: #fff; font-weight: 800; padding: 0 4px; border-radius: 2px; }
-        .tag-sqz { background: #3b82f6; color: #fff; padding: 0 4px; border-radius: 2px; }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-thumb { background: #333; }
+        .pinned { border: 2px solid #f0b90b !important; }
+        .tag { font-size: 8px; padding: 1px 4px; border-radius: 2px; font-weight: bold; }
+        .tag-liq { background: #ff0000; color: white; }
     </style>
 </head>
 <body class="h-screen flex flex-col text-[10px]">
 
     <header class="p-4 border-b border-yellow-900 bg-black flex justify-between items-center shrink-0">
         <div class="flex items-center gap-4">
-            <h1 class="text-2xl font-black text-yellow-500 italic">⚡ 趨勢改變 V12.0</h1>
-            <div class="flex gap-2 bg-zinc-900 p-1 rounded border border-zinc-700">
-                <input id="searchInput" type="text" placeholder="搜尋幣名" class="bg-transparent text-xs px-2 focus:outline-none w-32 text-white">
-            </div>
+            <h1 class="text-2xl font-black text-yellow-500 italic">⚡ 趨勢改變</h1>
+            <input id="searchInput" type="text" placeholder="搜尋幣名..." class="bg-zinc-900 text-xs px-3 py-1 rounded border border-zinc-700 focus:outline-none text-white w-40">
         </div>
-        <div class="flex gap-4">
-            <div id="scanStatus" class="text-zinc-500 flex items-center">系統待命...</div>
-            <button id="sysBtn" onclick="toggleSystem()" class="bg-yellow-600 text-black px-8 py-1 rounded font-black hover:bg-yellow-500">START RADAR</button>
+        <div class="flex gap-4 items-center">
+            <div id="scanStatus" class="text-zinc-500 uppercase tracking-widest">系統待命</div>
+            <button id="sysBtn" onclick="toggleSystem()" class="bg-yellow-600 text-black px-6 py-1 rounded font-black hover:bg-yellow-500 transition">START RADAR</button>
         </div>
     </header>
 
     <div class="flex flex-1 overflow-hidden">
-        <main class="flex-1 p-3 overflow-y-auto bg-black">
-            <div id="dashboard" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                </div>
+        <main class="flex-1 p-4 overflow-y-auto bg-black">
+            <div id="dashboard" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"></div>
         </main>
-
         <aside class="w-72 border-l border-yellow-900 bg-zinc-950 flex flex-col shrink-0">
-            <div class="p-3 border-b border-zinc-800 text-red-500 font-bold flex justify-between uppercase">
-                <span>清算日誌 (LIQ LOG)</span>
-            </div>
+            <div class="p-3 border-b border-zinc-800 text-yellow-600 font-bold">戰鬥日誌</div>
             <div id="logContainer" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
         </aside>
     </div>
@@ -57,83 +46,82 @@
     let pinned = new Set(JSON.parse(localStorage.getItem('pinned_v12')) || []);
     let searchFilter = '';
 
-    // 1. 初始化幣對清單
     async function init() {
         try {
             const res = await fetch(`${API_BASE}/api/v3/exchangeInfo`);
             const data = await res.json();
+            // 過濾：USDT交易對、排除BTC/ETH、過濾槓桿代幣(UP/DOWN)
             allSymbols = data.symbols
-                .filter(s => s.status === 'TRADING' && s.quoteAsset === 'USDT')
+                .filter(s => s.status === 'TRADING' && s.quoteAsset === 'USDT' && !s.symbol.includes('UP') && !s.symbol.includes('DOWN'))
                 .filter(s => !['BTCUSDT', 'ETHUSDT'].includes(s.symbol))
                 .map(s => s.symbol);
-            document.getElementById('scanStatus').innerText = `已載入 ${allSymbols.length} 個幣對`;
-        } catch (e) { console.error("初始化失敗"); }
+            document.getElementById('scanStatus').innerText = `已對齊 ${allSymbols.length} 幣對`;
+        } catch (e) { document.getElementById('scanStatus').innerText = 'API 初始化失敗'; }
     }
 
-    // 2. 核心循環：每 3 秒執行一次，分段請求
+    // 核心優化：控制請求速率的掃描函數
     async function scanLoop() {
         if (!isRunning) return;
 
-        // 決定本次掃描範圍 (優先定選 + 搜尋)
-        let targets = allSymbols.filter(s => s.includes(searchFilter.toUpperCase())).slice(0, 20);
-        if (pinned.size > 0) targets = [...new Set([...pinned, ...targets])];
+        // 優先順序：定選 > 搜尋內容 > 其他
+        let targets = [...new Set([...pinned, ...allSymbols.filter(s => s.includes(searchFilter))])].slice(0, 40);
 
         for (let symbol of targets) {
             if (!isRunning) break;
+            
             try {
-                // 封包 A: K線數據 (分析支撐與均量)
+                // 1. 請求 K 線 (分析支撐)
                 const kRes = await fetch(`${API_BASE}/api/v3/klines?symbol=${symbol}&interval=15m&limit=30`);
+                if (!kRes.ok) throw new Error();
                 const klines = await kRes.json();
+                
                 const minLow = Math.min(...klines.map(k => parseFloat(k[3])));
                 const avgVol = klines.reduce((a, b) => a + parseFloat(b[5]), 0) / klines.length;
 
-                // 間隔 150ms 模擬分段封包
-                await new Promise(r => setTimeout(r, 150));
+                // --- 重要：強制延遲 250ms 防止請求過快 ---
+                await new Promise(r => setTimeout(r, 250));
 
-                // 封包 B: 最新 Ticker (比對清算型態)
+                // 2. 請求最新價
                 const tRes = await fetch(`${API_BASE}/api/v3/ticker/24hr?symbol=${symbol}`);
+                if (!tRes.ok) throw new Error();
                 const ticker = await tRes.json();
+                
                 const price = parseFloat(ticker.lastPrice);
                 const curVol = parseFloat(ticker.volume) / 96;
-
-                // 判斷邏輯：價格跌破支撐 且 成交量 > 均量 2.5 倍
-                const isLiq = price < minLow && curVol > (avgVol * 2.5);
-                const isSqz = curVol < (avgVol * 0.5); // 橫盤縮量特徵
+                const isLiq = price < minLow && curVol > (avgVol * 2.2);
+                const isSqz = curVol < (avgVol * 0.4);
 
                 stats[symbol] = { symbol, price, minLow, volRatio: (curVol/avgVol).toFixed(2), isLiq, isSqz };
+                if (isLiq) addLog(symbol, price, stats[symbol].volRatio);
                 
-                if (isLiq) addLog(symbol, price, (curVol/avgVol).toFixed(1));
-            } catch (e) { console.log(`${symbol} 跳過`); }
+                render(); // 每次獲取數據後更新 UI，確保流暢感
+            } catch (e) {
+                console.warn(`${symbol} 請求被限制，跳過中...`);
+                await new Promise(r => setTimeout(r, 1000)); // 遇到錯誤多等一秒
+            }
         }
         
-        render();
+        // 完成一輪後休息 3 秒
         setTimeout(scanLoop, 3000);
     }
 
     function render() {
         const dashboard = document.getElementById('dashboard');
-        const sorted = Object.values(stats).sort((a,b) => (pinned.has(b.symbol) - pinned.has(a.symbol)) || (b.isLiq - a.isLiq));
-
-        dashboard.innerHTML = sorted.map(x => `
-            <div class="card p-3 rounded-lg ${x.isLiq ? 'hunt-card' : (x.isSqz ? 'warn-card' : '')} ${pinned.has(x.symbol)?'pinned':''}" onclick="togglePin('${x.symbol}')">
+        const list = Object.values(stats).sort((a,b) => (pinned.has(b.symbol) - pinned.has(a.symbol)) || (b.isLiq - a.isLiq));
+        
+        dashboard.innerHTML = list.map(x => `
+            <div class="card p-3 rounded border ${x.isLiq ? 'hunt-card' : (x.isSqz ? 'warn-card' : '')} ${pinned.has(x.symbol)?'pinned':''}" onclick="togglePin('${x.symbol}')">
                 <div class="flex justify-between items-start mb-2">
-                    <span class="text-lg font-black text-white">${x.symbol.replace('USDT','')}</span>
-                    <div class="flex gap-1">
-                        ${x.isLiq ? '<span class="tag-liq">清算中</span>' : ''}
-                        ${x.isSqz ? '<span class="tag-sqz">縮量橫盤</span>' : ''}
-                    </div>
+                    <span class="text-sm font-black text-white">${x.symbol.replace('USDT','')}</span>
+                    ${x.isLiq ? '<span class="tag tag-liq">LIQUIDATION</span>' : ''}
                 </div>
-                <div class="flex justify-between text-[11px] mb-1">
-                    <span class="text-zinc-500">最新價</span>
-                    <span class="text-yellow-500 font-bold">${x.price}</span>
+                <div class="flex justify-between font-mono">
+                    <span class="text-zinc-500 text-[9px]">PRICE</span>
+                    <span class="text-yellow-500">${x.price}</span>
                 </div>
-                <div class="flex justify-between text-[11px] mb-2">
-                    <span class="text-zinc-500">底部支撐</span>
-                    <span class="text-white">${x.minLow}</span>
-                </div>
-                <div class="pt-2 border-t border-zinc-900 flex justify-between items-center">
-                    <span class="text-zinc-600">量能比率</span>
-                    <span class="${x.isLiq ? 'text-red-500' : 'text-blue-400'} font-black">${x.volRatio}x</span>
+                <div class="flex justify-between font-mono">
+                    <span class="text-zinc-500 text-[9px]">RATIO</span>
+                    <span class="${x.isLiq ? 'text-red-500' : 'text-blue-400'}">${x.volRatio}x</span>
                 </div>
             </div>
         `).join('');
@@ -144,16 +132,14 @@
         if (document.getElementById(`log-${s}`)) return;
         const entry = document.createElement('div');
         entry.id = `log-${s}`;
-        entry.className = `p-2 bg-red-950/30 border-l-4 border-red-600 mb-1 animate-pulse`;
-        entry.innerHTML = `<div class="flex justify-between"><b>🚨 LIQ: ${s}</b> <span>${new Date().toLocaleTimeString()}</span></div>
-                           <div class="text-zinc-400">價格跌破支撐，量能激增 ${r} 倍</div>`;
+        entry.className = `p-2 bg-zinc-900 border-l-2 border-red-500 text-[9px] mb-1`;
+        entry.innerHTML = `<b>${s}</b> BREAKDOWN! Vol: ${r}x <span class="float-right text-zinc-600">${new Date().toLocaleTimeString()}</span>`;
         container.prepend(entry);
     }
 
     function toggleSystem() {
         isRunning = !isRunning;
         document.getElementById('sysBtn').innerText = isRunning ? "STOP RADAR" : "START RADAR";
-        document.getElementById('sysBtn').className = isRunning ? "bg-red-600 text-white px-8 py-1 rounded font-black" : "bg-yellow-600 text-black px-8 py-1 rounded font-black";
         if(isRunning) scanLoop();
     }
 
@@ -164,7 +150,6 @@
     }
 
     document.getElementById('searchInput').oninput = (e) => { searchFilter = e.target.value.toUpperCase(); };
-
     init();
 </script>
 </body>
