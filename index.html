@@ -2,60 +2,109 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ TRIDENT V25 - LIQUIDATION FOCUS</title>
+    <title>⚡ TRIDENT V28 - 實時清算監控系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background: #000; color: #e4e4e7; font-family: 'JetBrains Mono', monospace; }
-        .card { background: #09090b; border: 1px solid #18181b; transition: all 0.5s ease; opacity: 0; transform: translateY(20px); }
-        .card-show { opacity: 1; transform: translateY(0); } /* 只有量大的幣會浮現 */
-        .liq-alert { border: 2px solid #ef4444 !important; background: #450a0a !important; animation: flash 0.5s infinite; }
-        @keyframes flash { 0%, 100% { border-color: #ef4444; } 50% { border-color: #fff; } }
+        body { background: #000; color: #e4e4e7; font-family: 'PingFang TC', 'Microsoft JhengHei', monospace; }
+        .card { background: #09090b; border: 1px solid #18181b; transition: all 0.4s ease; opacity: 0; transform: scale(0.95); }
+        .card-show { opacity: 1; transform: scale(1); }
+        .liq-alert { border: 2px solid #ef4444 !important; background: #2a0808 !important; animation: blink 0.6s infinite; }
+        @keyframes blink { 0%, 100% { box-shadow: 0 0 10px #ef4444; } 50% { box-shadow: 0 0 25px #ef4444; } }
+        .oi-up { color: #22c55e; } 
+        .oi-down { color: #ef4444; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #27272a; }
     </style>
 </head>
-<body class="p-6">
+<body class="p-6 h-screen overflow-hidden flex flex-col">
 
     <header class="flex justify-between items-center border-b border-zinc-800 pb-5 mb-6">
         <div>
-            <h1 class="text-2xl font-black italic text-white tracking-tighter text-red-600">LIQUIDATOR V25</h1>
-            <p class="text-[10px] text-zinc-500 uppercase mt-1">策略：縮量橫盤 ➔ 放量跌破前低 (清算多單)</p>
+            <h1 class="text-2xl font-black italic text-red-600 tracking-tighter">TRIDENT V28 <span class="text-white text-sm">| 清算獵手</span></h1>
+            <p id="statusMsg" class="text-[10px] text-zinc-500 uppercase mt-1 font-mono">系統待命：等待初始化數據庫</p>
         </div>
-        <button id="startBtn" onclick="ignite()" class="bg-zinc-900 text-white px-8 py-2 font-black rounded border border-zinc-700 hover:bg-red-700">掃描全市場</button>
+        <div class="flex gap-4">
+            <div id="loadingInfo" class="text-right text-[10px] text-zinc-600 self-center font-mono"></div>
+            <button id="startBtn" onclick="ignite()" class="bg-red-700 text-white px-10 py-2 font-black rounded hover:bg-red-600 transition-all shadow-lg shadow-red-900/20">啟動數據雷達</button>
+        </div>
     </header>
 
-    <div id="monitorList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"></div>
+    <div id="monitorList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 overflow-y-auto pr-2 flex-1"></div>
 
 <script>
-    const EXCLUDE = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT']; 
+    const EXCLUDE = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT']; 
+    const VOL_SHOW_LIMIT = 1.25; // 1.25倍量才顯示
+    const LIQ_ALARM_LIMIT = 2.5; // 2.5倍量且破低點則報警
     let baselineData = {}; 
-    const VOL_TRIGGER = 1.2; // 量能開始比平均大 20% 就顯示在畫面上
-    const LIQ_TRIGGER = 2.5; // 量能超過 2.5 倍且破低則觸發警告
+    let ws = null;
 
-    async function ignite() {
-        document.getElementById('startBtn').innerText = "數據庫建立中...";
-        const res = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
-        const targets = (await res.json())
-            .filter(s => s.symbol.endsWith('USDT') && !EXCLUDE.includes(s.symbol))
-            .sort((a,b) => b.quoteVolume - a.quoteVolume).slice(0, 100);
-
-        for(let i=0; i<targets.length; i+=5) {
-            await Promise.all(targets.slice(i, i+5).map(async (t) => {
-                const kRes = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${t.symbol}&interval=15m&limit=50`);
-                const klines = await kRes.json();
-                const lows = klines.map(k => parseFloat(k[3]));
-                const volumes = klines.map(k => parseFloat(k[5]));
-                baselineData[t.symbol] = {
-                    support: Math.min(...lows), // 前低點
-                    avgVol: volumes.reduce((a, b) => a + b, 0) / volumes.length
+    // 1. 真實持倉歷史數據抓取
+    async function getOIHistory(s) {
+        try {
+            // 抓取 1h 週期歷史持倉 (limit=5 代表拿最近 5 小時)
+            const res = await fetch(`https://fapi.binance.com/fapi/v1/openInterestHist?symbol=${s}&period=1h&limit=5`);
+            const hist = await res.json();
+            if (hist && hist.length >= 4) {
+                const nowOI = parseFloat(hist[hist.length - 1].sumOpenInterest);
+                const oi1h = parseFloat(hist[hist.length - 2].sumOpenInterest);
+                const oi4h = parseFloat(hist[0].sumOpenInterest);
+                return {
+                    chg1h: ((nowOI - oi1h) / oi1h * 100).toFixed(2),
+                    chg4h: ((nowOI - oi4h) / oi4h * 100).toFixed(2),
+                    currentOI: nowOI
                 };
-            }));
-            await new Promise(r => setTimeout(r, 300));
-        }
-        document.getElementById('startBtn').style.display = 'none';
-        startStream();
+            }
+        } catch(e) { return null; }
+        return null;
     }
 
-    function startStream() {
-        const ws = new WebSocket(`wss://fstream.binance.com/ws/!ticker@arr`);
+    // 2. 初始化數據庫 (模仿 Sniper V6.6.0 序列請求)
+    async function ignite() {
+        const btn = document.getElementById('startBtn');
+        const status = document.getElementById('statusMsg');
+        const info = document.getElementById('loadingInfo');
+        
+        btn.disabled = true;
+        btn.classList.add('opacity-50');
+        status.innerText = "正在掃描全市場活躍幣對...";
+
+        const tickerRes = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
+        const allData = await tickerRes.json();
+        const targets = allData.filter(s => s.symbol.endsWith('USDT') && !EXCLUDE.includes(s.symbol))
+                               .sort((a,b) => b.quoteVolume - a.quoteVolume)
+                               .slice(0, 60); // 監控前 60 強
+
+        for(let i=0; i<targets.length; i+=4) { // 每組 4 個併發
+            const batch = targets.slice(i, i+4);
+            await Promise.all(batch.map(async (t) => {
+                try {
+                    const kRes = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${t.symbol}&interval=15m&limit=50`);
+                    const klines = await kRes.json();
+                    const lows = klines.map(k => parseFloat(k[3]));
+                    const volumes = klines.map(k => parseFloat(k[5]));
+                    const oiStats = await getOIHistory(t.symbol);
+
+                    baselineData[t.symbol] = {
+                        support: Math.min(...lows), // 50K 支撐位
+                        avgVol: volumes.reduce((a, b) => a + b, 0) / volumes.length,
+                        oi: oiStats || { chg1h: "0.00", chg4h: "0.00" }
+                    };
+                } catch(e) {}
+            }));
+            info.innerText = `已完成: ${i + batch.length} / ${targets.length}`;
+            await new Promise(r => setTimeout(r, 400)); // 避免 API 429 錯誤
+        }
+
+        btn.style.display = 'none';
+        status.innerText = "數據庫就緒：WebSocket 實時監控中";
+        startRealtimeStream();
+    }
+
+    // 3. 實時數據流處理
+    function startRealtimeStream() {
+        // 使用全市場 Ticker 廣播，這是最省資源且反應最快的方式
+        ws = new WebSocket(`wss://fstream.binance.com/ws/!ticker@arr`);
+        
         ws.onmessage = (e) => {
             const data = JSON.parse(e.data);
             data.forEach(msg => {
@@ -64,56 +113,80 @@
                 if(!base) return;
 
                 const price = parseFloat(msg.c);
-                const currentVol = parseFloat(msg.q) / 1440; // 24h量轉為每分鐘預估量 (更敏感)
-                const volRatio = currentVol / (base.avgVol / 15); // 與 15m 均量做比較
+                // 1/96 權重邏輯補全：24h成交量(q)轉15m預估量
+                const currentMinuteVol = parseFloat(msg.q) / 1440; 
+                const estimated15mVol = currentMinuteVol * 15; 
+                const volRatio = estimated15mVol / base.avgVol;
 
-                // 策略過濾：只有成交量開始變大的幣對才顯示 (二次過濾)
-                const shouldShow = volRatio > VOL_TRIGGER;
-                const isLiq = (price < base.support) && (volRatio > LIQ_TRIGGER);
+                // 策略過濾：量大才顯示，破前低且爆量則報警
+                const shouldShow = volRatio > VOL_SHOW_LIMIT;
+                const isLiq = (price < base.support) && (volRatio > LIQ_ALARM_LIMIT);
 
-                updateUI(s, price, volRatio, isLiq, shouldShow, base.support);
+                if (shouldShow || isLiq) {
+                    updateUI(s, price, volRatio, isLiq, base.support, base.oi);
+                } else {
+                    const el = document.getElementById(`card-${s}`);
+                    if(el) { 
+                        el.classList.remove('card-show'); 
+                        setTimeout(() => el.remove(), 400); 
+                    }
+                }
             });
         };
     }
 
-    function updateUI(s, price, ratio, isLiq, shouldShow, support) {
+    // 4. 介面渲染 (全中文 + OI 變化)
+    function updateUI(s, price, ratio, isLiq, support, oi) {
         let el = document.getElementById(`card-${s}`);
-        
-        if (!shouldShow && !el) return; // 量不大且沒建立過卡片就不理它
-
         if (!el) {
             el = document.createElement('div');
             el.id = `card-${s}`;
-            document.getElementById('monitorList').appendChild(el);
+            el.className = "card p-5 rounded-xl";
+            document.getElementById('monitorList').prepend(el);
+            setTimeout(() => el.classList.add('card-show'), 10);
         }
 
-        // 如果成交量縮小回去了，就隱藏它
-        if (!shouldShow && !isLiq) {
-            el.classList.remove('card-show');
-            setTimeout(() => el.remove(), 500);
-            return;
-        }
-
-        el.className = `card p-5 rounded-lg card-show ${isLiq ? 'liq-alert' : ''}`;
+        el.className = `card p-5 rounded-xl card-show ${isLiq ? 'liq-alert' : ''}`;
         el.innerHTML = `
-            <div class="flex justify-between items-center mb-3">
-                <span class="text-xl font-bold italic text-white">${s.replace('USDT','')}</span>
-                <span class="text-[10px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-400">VOL INCREASING</span>
+            <div class="flex justify-between items-center mb-4">
+                <span class="text-2xl font-black italic text-white">${s.replace('USDT','')}</span>
+                <div class="flex flex-col items-end">
+                    <span class="text-[9px] px-2 py-0.5 rounded border ${isLiq ? 'border-white text-white' : 'border-zinc-800 text-zinc-500'}">
+                        ${isLiq ? '⚠️ 清算破位' : '量能擴張'}
+                    </span>
+                </div>
             </div>
-            <div class="space-y-2 text-[12px] font-mono">
-                <div class="flex justify-between">
-                    <span class="text-zinc-500">PRICE</span>
-                    <span class="${price < support ? 'text-red-500 font-bold' : 'text-white'}">${price}</span>
+
+            <div class="grid grid-cols-2 gap-4 mb-4 font-mono">
+                <div>
+                    <div class="text-zinc-600 text-[10px] mb-1">當前價格</div>
+                    <div class="text-lg font-bold ${price < support ? 'text-red-500' : 'text-white'}">${price < 1 ? price.toFixed(5) : price.toFixed(2)}</div>
                 </div>
-                <div class="flex justify-between">
-                    <span class="text-zinc-500">PREV LOW</span>
-                    <span class="text-zinc-400">${support.toFixed(4)}</span>
+                <div>
+                    <div class="text-zinc-600 text-[10px] mb-1">50K前低點</div>
+                    <div class="text-lg text-zinc-400 font-bold">${support < 1 ? support.toFixed(5) : support.toFixed(2)}</div>
                 </div>
-                <div class="pt-3 border-t border-zinc-900 mt-2 flex justify-between items-end">
-                    <div class="text-[10px] text-zinc-500">VOL MOMENTUM</div>
-                    <div class="text-lg font-black ${ratio > LIQ_TRIGGER ? 'text-red-500' : 'text-blue-500'}">
-                        ${ratio.toFixed(2)}x
-                    </div>
+            </div>
+
+            <div class="mb-4">
+                <div class="flex justify-between items-end mb-1">
+                    <span class="text-[10px] text-zinc-600">實時量能倍率 (1/96)</span>
+                    <span class="text-xl font-black ${ratio > LIQ_ALARM_LIMIT ? 'text-red-500' : 'text-blue-500'}">${ratio.toFixed(2)}x</span>
+                </div>
+                <div class="w-full bg-zinc-900 h-1 rounded-full overflow-hidden">
+                    <div class="h-full bg-blue-500" style="width: ${Math.min(ratio * 20, 100)}%; background-color: ${ratio > LIQ_ALARM_LIMIT ? '#ef4444' : '#3b82f6'}"></div>
+                </div>
+            </div>
+
+            <div class="bg-black/40 p-3 rounded-lg border border-zinc-900 space-y-2">
+                <div class="text-[9px] text-zinc-500 font-bold mb-1 italic">持倉量變化 (OPEN INTEREST)</div>
+                <div class="flex justify-between text-xs font-mono">
+                    <span class="text-zinc-500">1小時變化</span>
+                    <span class="${oi.chg1h > 0 ? 'oi-up' : 'oi-down'} font-bold">${oi.chg1h > 0 ? '▲' : '▼'} ${Math.abs(oi.chg1h)}%</span>
+                </div>
+                <div class="flex justify-between text-xs font-mono">
+                    <span class="text-zinc-500">4小時變化</span>
+                    <span class="${oi.chg4h > 0 ? 'oi-up' : 'oi-down'} font-bold">${oi.chg4h > 0 ? '▲' : '▼'} ${Math.abs(oi.chg4h)}%</span>
                 </div>
             </div>
         `;
