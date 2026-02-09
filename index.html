@@ -1,143 +1,114 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <title>⚡ SNIPER V49.0 | 數據組織資料庫版</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
-        body { background: #000; color: #FFD700; font-family: 'JetBrains Mono', monospace; overflow: hidden; height: 100vh; }
-        .dashboard { display: grid; grid-template-cols: repeat(auto-fill, minmax(350px, 1fr)); gap: 8px; padding: 10px; }
-        .card { background: #050505; border: 1px solid #1a1a1a; padding: 10px; position: relative; border-radius: 2px; }
-        .hunt-card { border: 2px solid #ff0000 !important; background: #150000 !important; }
-        
-        /* 1/24 隔離邏輯：強制歸類 */
-        .data-source { background: #ff0000; color: #fff; font-size: 8px; font-weight: 900; padding: 1px 4px; position: absolute; top: 0; right: 0; }
-        
-        .w-table { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 10px; }
-        .w-tr { display: grid; grid-template-cols: 1fr 0.5fr 0.5fr 1fr 1fr; border-bottom: 1px solid #111; padding: 4px 0; }
-        .w-th { color: #555; font-size: 8px; font-weight: 900; background: #0a0a0a; }
-        
-        .up { color: #22c55e; } .down { color: #ef4444; }
-        input[type=range] { accent-color: #FFD700; width: 100%; cursor: pointer; height: 2px; }
-    </style>
-</head>
-<body class="flex flex-col">
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
-    <header class="p-3 border-b border-zinc-900 flex justify-between items-center">
-        <div class="flex flex-col">
-            <h1 class="text-xl font-black text-yellow-500 italic">⚡ SNIPER V49.0 [DATABASE_MODE]</h1>
-            <span class="text-[9px] text-zinc-500 font-bold uppercase">1/24 - 2/04 Data Integration Active</span>
-        </div>
-        <div class="flex gap-2">
-            <button onclick="clearDatabase()" class="text-[9px] border border-zinc-800 px-2 text-zinc-500 hover:text-white">重置歷史數據</button>
-            <button onclick="toggleSystem()" id="sysBtn" class="bg-blue-700 text-white px-6 py-1 font-black rounded text-xs">START RADAR</button>
-        </div>
-    </header>
+/**
+ * 功能：監控幣安 PIPPINSUDT
+ * 特徵：偵測「縮量橫盤後，放量跌破支撐（清算多單）」的型態
+ * 頻率：每 3 秒一個循環，拆分為兩個請求封包
+ */
+public class BinanceLiquidationScanner {
 
-    <div class="bg-zinc-950 p-2 border-b border-zinc-900 grid grid-cols-5 gap-4 text-[9px] font-black text-zinc-500 uppercase">
-        <div>SQZ <span id="v_sqz" class="text-white">2.5%</span><input type="range" id="i_sqz" min="5" max="100" value="25"></div>
-        <div>POC <span id="v_poc" class="text-white">2.0%</span><input type="range" id="i_poc" min="5" max="100" value="20"></div>
-        <div>SLP <span id="v_slp" class="text-white">-3.5%</span><input type="range" id="i_slp" min="5" max="100" value="35"></div>
-        <div>DRV <span id="v_drv" class="text-white">6.0</span><input type="range" id="i_drv" min="10" max="150" value="60"></div>
-        <div>MOM <span id="v_mom" class="text-white">0.8%</span><input type="range" id="i_mom" min="1" max="50" value="8"></div>
-    </div>
+    // 幣安現貨 API
+    private static final String BASE_URL = "https://api.binance.com";
+    private static final String SYMBOL = "PIPPINUSDT";
+    
+    // 門檻設定
+    private static final int LOOKBACK_PERIOD = 50; // 觀察過去 50 根 K 線
+    private static final double VOLUME_SPIKE_RATIO = 2.5; // 成交量需大於均值 2.5 倍
 
-    <main id="dashboard" class="flex-1 overflow-y-auto dashboard"></main>
+    private final HttpClient httpClient;
+    private double supportLevel = 0.0;
+    private double avgVolume = 0.0;
 
-<script>
-    let stats = {}, isRunning = false;
-    let CONFIG = { sqz: 2.5, poc: 2.0, slp: -3.5, drv: 6.0, mom: 0.8 };
-
-    // --- 數據組織核心：1/24 - 2/04 數據持久化架構 ---
-    const DB_NAME = "SNIPER_SESSION_DATA";
-    function saveToDatabase(symbol, data) {
-        let history = JSON.parse(localStorage.getItem(DB_NAME) || "{}");
-        if (!history[symbol]) history[symbol] = [];
-        // 1/24 指令：強制歸屬於週六標籤
-        data.session = "SATURDAY_DATA_ISOLATION";
-        history[symbol].push(data);
-        if (history[symbol].length > 50) history[symbol].shift(); // 保持近 50 期
-        localStorage.setItem(DB_NAME, JSON.stringify(history));
+    public BinanceLiquidationScanner() {
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .build();
     }
 
-    function clearDatabase() { localStorage.removeItem(DB_NAME); alert("歷史數據已重置"); location.reload(); }
-    // --------------------------------------------
+    public void start() {
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        System.out.println(">>> 啟動監控: " + SYMBOL);
+        System.out.println(">>> 策略：偵測縮量橫盤後的「放量清算」...");
 
-    ['sqz','poc','slp','drv','mom'].forEach(id => {
-        document.getElementById('i_'+id).oninput = (e) => {
-            let val = (e.target.value / 10).toFixed(1);
-            document.getElementById('v_'+id).innerText = (id==='slp'?'-':'') + val + (id==='drv'?'':'%');
-            CONFIG[id] = parseFloat(val);
-            render();
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                // --- 封包 1: 請求 K 線數據 (分析背景) ---
+                String klineUrl = BASE_URL + "/api/v3/klines?symbol=" + SYMBOL + "&interval=15m&limit=" + LOOKBACK_PERIOD;
+                String klineJson = fetch(klineUrl);
+                calculateBaseLine(klineJson);
+
+                // 強制等待 1.5 秒，確保兩個封包請求在時間上完全分開
+                Thread.sleep(1500);
+
+                // --- 封包 2: 請求最新 Ticker (偵測異動) ---
+                String tickerUrl = BASE_URL + "/api/v3/ticker/24hr?symbol=" + SYMBOL;
+                String tickerJson = fetch(tickerUrl);
+                detectLiquidation(tickerJson);
+
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (Exception e) {
+                System.err.println("[系統錯誤] " + e.getMessage());
+            }
+        }, 0, 3, TimeUnit.SECONDS);
+    }
+
+    private String fetch(String url) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .GET()
+                .header("Accept", "application/json")
+                .build();
+        return httpClient.send(request, HttpResponse.BodyHandlers.ofString()).body();
+    }
+
+    private void calculateBaseLine(String json) {
+        JsonArray klines = JsonParser.parseString(json).getAsJsonArray();
+        double minLow = Double.MAX_VALUE;
+        double totalVol = 0;
+
+        for (int i = 0; i < klines.size(); i++) {
+            JsonArray k = klines.get(i).getAsJsonArray();
+            // K線結構: [0]Time, [1]Open, [2]High, [3]Low, [4]Close, [5]Volume
+            double low = k.get(3).getAsDouble();
+            double vol = k.get(5).getAsDouble();
+            
+            if (low < minLow) minLow = low;
+            totalVol += vol;
         }
-    });
-
-    async function scan() {
-        if(!isRunning) return;
-        try {
-            const res = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
-            const data = await res.json();
-            data.forEach(t => {
-                const s = t.symbol; if(!s.endsWith('USDT')) return;
-                const change = parseFloat(t.priceChangePercent);
-                const vol = parseFloat(t.quoteVolume) / 1e6;
-
-                // 1/22 高勝率算法：整合 MOM
-                let sc = (vol / 130) * CONFIG.drv + (Math.abs(change) / CONFIG.mom);
-                let score = sc > 68 ? 99 : 35;
-
-                if (!stats[s]) stats[s] = { s, history_count: 0 };
-                stats[s] = { ...stats[s], price: t.lastPrice, change: t.priceChangePercent, score, vol: vol.toFixed(1) };
-                
-                if (score >= 70) {
-                    saveToDatabase(s, { p: t.lastPrice, c: t.priceChangePercent, sc: score, ts: Date.now() });
-                    let history = JSON.parse(localStorage.getItem(DB_NAME) || "{}");
-                    stats[s].history_count = history[s] ? history[s].length : 0;
-                }
-            });
-            render();
-        } catch (e) {}
-        setTimeout(scan, 1200);
+        this.supportLevel = minLow;
+        this.avgVolume = totalVol / klines.size();
     }
 
-    function render() {
-        const board = document.getElementById('dashboard');
-        const list = Object.values(stats).filter(x => x.score >= 70).sort((a,b) => b.score - a.score).slice(0, 15);
+    private void detectLiquidation(String json) {
+        JsonObject ticker = JsonParser.parseString(json).getAsJsonObject();
+        double currentPrice = ticker.get("lastPrice").getAsDouble();
+        double currentVol = ticker.get("volume").getAsDouble() / 96; // 簡單估算當前 15m 的即時量
 
-        board.innerHTML = list.map(x => `
-            <div class="card ${x.score >= 90 ? 'hunt-card' : ''}">
-                <div class="data-source">0124_SAT_ISOLATION</div>
-                <div class="flex justify-between">
-                    <span class="text-[9px] font-bold text-zinc-500 tracking-tighter">HIST_RECORDS: ${x.history_count}</span>
-                    <span class="text-xs font-black text-yellow-500">SC:${x.score}</span>
-                </div>
-                <div class="flex justify-between items-end my-3">
-                    <h2 class="text-3xl font-black italic text-white tracking-tighter">${x.s.replace('USDT','')}</h2>
-                    <div class="text-right">
-                        <div class="${parseFloat(x.change)>=0?'up':'down'} text-xl font-black">${x.change}%</div>
-                        <div class="text-[9px] text-zinc-600 font-bold">$${x.price}</div>
-                    </div>
-                </div>
-                <div class="w-table font-mono">
-                    <div class="w-tr w-th"><span>TYPE</span><span>LEV</span><span>SIZE</span><span class="text-right">UNPNL</span></div>
-                    <div class="w-tr">
-                        <span class="text-blue-500 font-bold italic uppercase">Futures</span>
-                        <span class="text-zinc-500">50x</span>
-                        <span class="text-zinc-300">12,450張</span>
-                        <span class="text-right up font-bold">+$4.2K</span>
-                    </div>
-                    <div class="w-tr">
-                        <span class="text-zinc-500 font-bold italic uppercase">Futures</span>
-                        <span class="text-zinc-500">20x</span>
-                        <span class="text-zinc-300">8,900張</span>
-                        <span class="text-right down font-bold">-$1.5K</span>
-                    </div>
-                </div>
-            </div>`).join('');
+        boolean priceDropped = currentPrice < supportLevel;
+        boolean volumeExploded = currentVol > (avgVolume * VOLUME_SPIKE_RATIO);
+
+        if (priceDropped && volumeExploded) {
+            System.out.println("\n🔥 [警告] 偵測到清算型態！");
+            System.out.println("當前價格 " + currentPrice + " 跌破支撐 " + supportLevel);
+            System.out.println("成交量顯著放大，多單可能正在被強制平倉！");
+        } else {
+            System.out.print("."); // 運行中心跳包顯示
+        }
     }
 
-    function toggleSystem() { isRunning = !isRunning; if(isRunning) scan(); }
-</script>
-</body>
-</html>
+    public static void main(String[] args) {
+        // 確保專案中已引入 Gson 依賴
+        new BinanceLiquidationScanner().start();
+    }
+}
