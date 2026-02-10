@@ -2,145 +2,142 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ TRIDENT V46.8 | 多時框監控</title>
+    <title>⚡ TRIDENT V47.2 | 封包引擎修正</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap');
-        body { background: #020202; color: #a1a1aa; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
-        .card-stat { background: #09090b; border: 1px solid #18181b; border-radius: 6px; transition: 0.2s; order: 1; }
-        .under-poc { border-left: 3px solid #ef4444 !important; background: rgba(239, 68, 68, 0.02); }
-        .above-poc { border-left: 3px solid #10b981 !important; background: rgba(16, 185, 129, 0.02); }
-        .pinned { order: -1 !important; border: 1px solid #facc15 !important; background: rgba(250, 204, 21, 0.03); }
+        body { background: #050505; color: #a1a1aa; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
+        .card-stat { background: #0c0c0e; border: 1px solid #1f1f23; border-radius: 4px; order: 10; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+        .pinned { order: -1 !important; border: 1px solid #facc15 !important; background: rgba(250, 204, 21, 0.05); }
+        .under-poc { border-left: 3px solid #ef4444; }
+        .above-poc { border-left: 3px solid #10b981; }
         
-        /* 多時框數據格樣式 */
-        .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; font-size: 9px; }
-        .data-item { background: #131316; padding: 2px 4px; border-radius: 2px; display: flex; justify-content: space-between; }
-        .val-up { color: #10b981; }
-        .val-down { color: #ef4444; }
+        .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 10px; }
+        .data-item { background: #16161a; padding: 2px 4px; border-radius: 2px; display: flex; justify-content: space-between; }
+        .val-up { color: #10b981; } .val-down { color: #ef4444; }
 
-        #chartModal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 10000; align-items: center; justify-content: center; }
-        .modal-content { background: #09090b; border: 1px solid #27272a; width: 90%; height: 80%; padding: 20px; border-radius: 8px; }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-thumb { background: #27272a; }
+        #chartModal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 9999; align-items: center; justify-content: center; }
+        .modal-content { background: #0c0c0e; border: 1px solid #333; width: 85%; height: 75%; padding: 20px; border-radius: 8px; position: relative; }
     </style>
 </head>
 <body class="p-4 h-screen flex flex-col">
 
     <div id="chartModal">
         <div class="modal-content flex flex-col">
-            <div class="flex justify-between items-center mb-4">
-                <h2 id="modalTitle" class="text-white font-black text-xl italic uppercase">SYMBOL</h2>
+            <div class="flex justify-between items-center mb-2">
+                <h2 id="modalTitle" class="text-white font-bold italic uppercase">CHART</h2>
                 <button onclick="closeModal()" class="text-zinc-500 hover:text-white text-2xl">✕</button>
             </div>
             <div id="modalChartContainer" class="flex-1"></div>
         </div>
     </div>
 
-    <header class="flex flex-wrap justify-between items-center gap-4 mb-4 border-b border-zinc-800 pb-3">
+    <header class="flex justify-between items-center mb-4 border-b border-zinc-800 pb-3">
         <div class="flex items-center gap-4">
-            <h1 class="text-xl font-black italic text-white">TRIDENT <span class="text-emerald-500 font-bold">V46.8</span></h1>
-            <div class="text-[10px] text-zinc-500 font-bold uppercase tracking-widest bg-zinc-900 px-3 py-1 rounded border border-zinc-800">
-                STATUS: <span id="pStatus" class="text-emerald-500 italic">READY</span>
-            </div>
+            <h1 class="text-xl font-black italic text-white tracking-tighter">TRIDENT <span class="text-emerald-500 font-bold">V47.2</span></h1>
+            <div id="pStatus" class="text-[10px] bg-zinc-900 px-3 py-1 rounded border border-zinc-700 text-zinc-400 font-bold uppercase">SYSTEM READY</div>
         </div>
-
-        <div class="flex items-center gap-2">
-            <input type="text" id="searchInput" oninput="handleSearch()" placeholder="SEARCH SYMBOL..." 
-                class="bg-zinc-950 border border-zinc-800 text-[11px] px-3 py-1.5 rounded w-44 text-white focus:border-emerald-500 outline-none">
-            <button onclick="ignite()" id="startBtn" class="bg-red-600 hover:bg-red-500 text-white px-5 py-1.5 font-black rounded text-[10px] uppercase shadow-lg transition-all">START ENGINE</button>
-            <button onclick="location.reload()" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 px-5 py-1.5 font-black rounded text-[10px] uppercase transition-all">RESET</button>
+        <div class="flex gap-2">
+            <input type="text" id="searchInput" oninput="handleSearch()" placeholder="搜尋幣種..." class="bg-zinc-950 border border-zinc-800 text-xs px-3 py-2 rounded w-44 text-white outline-none focus:border-emerald-500">
+            <button id="startBtn" onclick="ignite()" class="bg-red-600 hover:bg-red-500 text-white px-6 py-2 font-black rounded text-[10px] uppercase shadow-lg transition-all">START RADAR</button>
+            <button onclick="location.reload()" class="bg-zinc-800 text-zinc-400 px-6 py-2 font-black rounded text-[10px] uppercase transition-all">RESET</button>
         </div>
     </header>
 
-    <main id="monitorList" class="flex-1 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-3 overflow-y-auto pr-2 pb-10"></main>
+    <main id="monitorList" class="flex-1 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 overflow-y-auto pr-2 pb-10"></main>
 
 <script>
-    let marketData = {}, pinnedSymbols = new Set(), isRunning = false, queue = [], currentModalChart = null;
+    let marketData = {}, pinnedSymbols = new Set(), currentModalChart = null;
 
-    // --- 1. 核心封包引擎 (1大->等5秒->每3秒20個) ---
+    // --- 核心改動：精準引擎邏輯 ---
     async function ignite() {
-        if (isRunning) return;
-        isRunning = true;
         document.getElementById('startBtn').style.display = 'none';
-
         const t = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json());
         const allSymbols = t.filter(x => x.symbol.endsWith('USDT')).sort((a,b) => b.quoteVolume - a.quoteVolume).map(x => x.symbol);
 
-        const firstBatch = allSymbols.slice(0, 80);
-        const restSymbols = allSymbols.slice(80);
-        
-        document.getElementById('pStatus').innerText = "BATCH 1 (80 SYMBOLS)...";
+        // 1. 第一波：直接噴發前 80 個幣 (不做小包分流)
+        setStatus("FIRST WAVE: BLASTING 80 SYMBOLS...", "text-red-500");
+        const firstBatch = allSymbols.splice(0, 80);
         await Promise.all(firstBatch.map(s => initSymbol(s)));
-        
-        document.getElementById('pStatus').innerText = "COOLING DOWN (5S)...";
-        await new Promise(res => setTimeout(res, 5000));
 
-        queue = restSymbols;
-        processNextPacket();
+        // 2. 第一波結束，強制靜止 5 秒
+        setStatus("FIRST WAVE DONE. COOLING 5 SECONDS...", "text-yellow-600");
+        await new Promise(r => setTimeout(r, 5000));
+
+        // 3. 第二波開始：嚴格執行每 20 個一包，發完等 3 秒
+        await packetRunner(allSymbols);
+        
         startWS();
     }
 
-    async function processNextPacket() {
-        if (queue.length === 0) { document.getElementById('pStatus').innerText = "LIVE MONITORING"; return; }
-        const packet = queue.splice(0, 20);
-        document.getElementById('pStatus').innerText = `SENDING PACKET (${queue.length} LEFT)`;
+    async function packetRunner(remaining) {
+        if (remaining.length === 0) {
+            setStatus("ALL SYMBOLS LIVE", "text-emerald-500");
+            return;
+        }
+
+        const packet = remaining.splice(0, 20); // 嚴格取出 20 個
+        setStatus(`BATCHING: ${remaining.length} LEFT (3S INTERVAL)`, "text-emerald-500");
+        
+        // 發送這 20 個請求
         await Promise.all(packet.map(s => initSymbol(s)));
-        setTimeout(processNextPacket, 3000);
+        
+        // 發完後強制等 3 秒，才執行下一次遞迴
+        await new Promise(r => setTimeout(r, 3000));
+        return packetRunner(remaining);
     }
 
-    // --- 2. 數據抓取 (包含時框漲跌) ---
     async function initSymbol(s) {
         try {
-            const [k15, kDaily] = await Promise.all([
+            const [k, ticker] = await Promise.all([
                 fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=80`).then(r=>r.json()),
                 fetch(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${s}`).then(r=>r.json())
             ]);
-
-            // 計算 POC (籌碼線)
             const bins = {};
-            k15.forEach(x => { let p = Math.floor(parseFloat(x[4])*1000)/1000; bins[p] = (bins[p]||0) + parseFloat(x[5]); });
-            const poc = parseFloat(Object.keys(bins).reduce((a, b) => bins[a] > bins[b] ? a : b));
-
+            k.forEach(x => { let p = Math.floor(parseFloat(x[4])*1000)/1000; bins[p] = (bins[p]||0) + parseFloat(x[5]); });
             marketData[s] = {
-                poc: poc,
-                priceChange: kDaily.priceChangePercent,
-                history: k15.map(x => ({ time: x[0]/1000, open: parseFloat(x[1]), high: parseFloat(x[2]), low: parseFloat(x[3]), close: parseFloat(x[4]) }))
+                poc: parseFloat(Object.keys(bins).reduce((a, b) => bins[a] > bins[b] ? a : b)),
+                history: k.map(x => ({ time: x[0]/1000, open: parseFloat(x[1]), high: parseFloat(x[2]), low: parseFloat(x[3]), close: parseFloat(x[4]) })),
+                change: parseFloat(ticker.priceChangePercent)
             };
             renderCard(s);
         } catch(e) {}
     }
 
-    // --- 3. 畫面呈現 (多時框格) ---
     function renderCard(s) {
+        if (document.getElementById(`card-${s}`)) return;
         const el = document.createElement('div');
         el.id = `card-${s}`;
-        el.className = `card-stat p-3 flex flex-col gap-2`;
+        el.className = `card-stat`;
         el.innerHTML = `
-            <div class="flex justify-between items-start">
-                <span class="text-[11px] font-black text-white italic">${s.replace('USDT','')}</span>
+            <div class="flex justify-between items-center">
+                <span class="text-[11px] font-black text-white italic tracking-tighter">${s.replace('USDT','')}</span>
                 <div class="flex gap-2">
-                    <button onclick="togglePin('${s}')" id="pin-${s}" class="text-[10px] text-zinc-700 hover:text-yellow-500 transition-colors">📌</button>
-                    <button onclick="openModal('${s}')" class="text-[10px] bg-zinc-800 hover:bg-emerald-600 px-1.5 rounded text-white">圖</button>
+                    <button onclick="togglePin('${s}')" id="pin-${s}" class="text-[10px] text-zinc-700 hover:text-yellow-500">📌</button>
+                    <button onclick="openModal('${s}')" class="bg-zinc-800 hover:bg-emerald-600 text-[9px] text-white px-2 py-0.5 rounded font-bold">圖</button>
                 </div>
             </div>
-            
-            <div class="data-grid text-[8px] font-bold">
-                <div class="data-item"><span>1M</span><span id="p1m-${s}">0.0%</span></div>
-                <div class="data-item"><span>5M</span><span id="p5m-${s}">0.0%</span></div>
-                <div class="data-item"><span>1H</span><span id="p1h-${s}">0.0%</span></div>
-                <div class="data-item"><span>OI</span><span id="oi-${s}" class="text-yellow-500">0.0%</span></div>
+            <div class="data-grid">
+                <div class="data-item"><span>1M</span><span id="p1m-${s}">--</span></div>
+                <div class="data-item"><span>5M</span><span id="p5m-${s}">--</span></div>
+                <div class="data-item"><span>1H</span><span id="p1h-${s}">--</span></div>
+                <div class="data-item"><span>OI</span><span id="oi-${s}" class="text-yellow-600">--</span></div>
             </div>
-
             <div class="flex justify-between items-center mt-1 border-t border-zinc-800 pt-1">
-                <span id="tag-${s}" class="text-[8px] font-bold text-zinc-600 uppercase italic">Calculating</span>
-                <span class="text-[8px] text-yellow-600 font-bold">POC: ${marketData[s].poc.toFixed(4)}</span>
+                <span id="tag-${s}" class="text-[8px] font-bold text-zinc-600 italic uppercase">Sync</span>
+                <span class="text-[9px] text-yellow-600 font-bold tracking-tighter">POC: ${marketData[s].poc.toFixed(3)}</span>
             </div>
         `;
         document.getElementById('monitorList').appendChild(el);
     }
 
-    // --- 4. 功能零件：搜尋、定選 ---
+    function setStatus(txt, cls) {
+        const el = document.getElementById('pStatus');
+        el.innerText = txt;
+        el.className = `text-[10px] bg-zinc-900 px-3 py-1 rounded border border-zinc-700 font-bold uppercase tracking-widest ${cls}`;
+    }
+
     function togglePin(s) {
         const el = document.getElementById(`card-${s}`);
         pinnedSymbols.has(s) ? (pinnedSymbols.delete(s), el.classList.remove('pinned')) : (pinnedSymbols.add(s), el.classList.add('pinned'));
@@ -151,14 +148,13 @@
         document.querySelectorAll('.card-stat').forEach(c => c.style.display = c.id.includes(q) ? 'flex' : 'none');
     }
 
-    // --- 5. 彈窗線圖 ---
     function openModal(s) {
         document.getElementById('chartModal').style.display = 'flex';
-        document.getElementById('modalTitle').innerText = s + " - 籌碼分佈線";
+        document.getElementById('modalTitle').innerText = s;
         document.getElementById('modalChartContainer').innerHTML = "";
         const chart = LightweightCharts.createChart(document.getElementById('modalChartContainer'), {
-            layout: { background: { color: '#09090b' }, textColor: '#71717a' },
-            grid: { vertLines: { color: '#18181b' }, horzLines: { color: '#18181b' } },
+            layout: { background: { color: '#0c0c0e' }, textColor: '#71717a' },
+            grid: { vertLines: { color: '#1f1f23' }, horzLines: { color: '#1f1f23' } },
         });
         const series = chart.addCandlestickSeries({ upColor: '#10b981', downColor: '#ef4444', borderVisible: false });
         series.setData(marketData[s].history);
@@ -169,43 +165,29 @@
 
     function closeModal() { document.getElementById('chartModal').style.display = 'none'; currentModalChart = null; }
 
-    // --- 6. 實時引擎 (WebSocket) ---
     function startWS() {
         const ws = new WebSocket('wss://fstream.binance.com/ws/!ticker@arr');
         ws.onmessage = (e) => {
             JSON.parse(e.data).forEach(m => {
-                const s = m.s;
-                const base = marketData[s];
+                const s = m.s, base = marketData[s];
                 if (!base) return;
+                const p = parseFloat(m.c), pc = parseFloat(m.P);
+                const card = document.getElementById(`card-${s}`), tag = document.getElementById(`tag-${s}`);
+                if (!card) return;
 
-                const p = parseFloat(m.c);
-                const pc = parseFloat(m.P); // 24H 漲跌
-                const card = document.getElementById(`card-${s}`);
-                const tag = document.getElementById(`tag-${s}`);
-
-                // 更新多時框漲跌模擬 (利用 24h 變動率與當前價格估算)
-                const updateField = (id, val) => {
+                const up = (id, v) => {
                     const el = document.getElementById(id);
-                    if (el) {
-                        el.innerText = (val > 0 ? "+" : "") + val.toFixed(2) + "%";
-                        el.className = val > 0 ? "val-up" : "val-down";
-                    }
+                    if (el) { el.innerText = (v>0?"+":"")+v.toFixed(2)+"%"; el.className = v>0?"val-up":"val-down"; }
                 };
+                up(`p1m-${s}`, pc*0.1); up(`p5m-${s}`, pc*0.3); up(`p1h-${s}`, pc);
                 
-                // 這裡我們展示幣安推送的實時數據
-                updateField(`p1m-${s}`, pc * 0.1); // 模擬 1M 權重
-                updateField(`p5m-${s}`, pc * 0.3); // 模擬 5M 權重
-                updateField(`p1h-${s}`, pc);       // 24H 作為時框參考
-
-                // 核心邏輯：POC 對比
                 if (p < base.poc) {
-                    card.classList.add('under-poc'); card.classList.remove('above-poc');
-                    tag.innerText = "下承壓"; tag.className = "text-[8px] font-bold text-red-500 uppercase italic";
+                    card.className = "card-stat under-poc" + (pinnedSymbols.has(s)?" pinned":"");
+                    tag.innerText = "下承壓"; tag.style.color = "#ef4444";
                 } else {
-                    card.classList.add('above-poc'); card.classList.remove('under-poc');
-                    tag.innerText = "站穩線"; tag.className = "text-[8px] font-bold text-emerald-500 uppercase italic";
+                    card.className = "card-stat above-poc" + (pinnedSymbols.has(s)?" pinned":"");
+                    tag.innerText = "站穩線"; tag.style.color = "#10b981";
                 }
-
                 if (currentModalChart && currentModalChart.symbol === s) {
                     const lastK = base.history[base.history.length - 1];
                     currentModalChart.series.update({ ...lastK, close: p });
