@@ -111,7 +111,6 @@
     }
 
     async function initSymbol(s) {
-        if (marketData[s]) return;
         try {
             const [k, oi] = await Promise.all([
                 fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=100`).then(r=>r.json()),
@@ -138,45 +137,33 @@
         } catch(e) { return { m5: "0.00", m15: "0.00", h1: "0.00", h4: "0.00" }; }
     }
 
-    // --- 嚴格維持原本抓取方式，僅在後段加入封包自動遞補 ---
+    // --- 修改後的啟動功能：封包模式 ---
     async function ignite() {
         document.getElementById('startBtn').classList.add('hidden');
         const tickers = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json());
         
-        // 取得所有 USDT 幣對
-        const allSymbols = tickers
+        // 這是你原本的篩選條件與排序
+        const targets = tickers
             .filter(t => t.symbol.endsWith('USDT') && !EXCLUDE.includes(t.symbol))
             .sort((a,b) => b.quoteVolume - a.quoteVolume)
-            .map(t => t.symbol);
-
-        // 合併定選幣種到清單的最前面
-        const targets = [...new Set([...pinnedSymbols, ...allSymbols])];
-
-        // 1. 第一階段：前 80 個維持原本的「一個一個抓」方式
-        const firstBatch = targets.slice(0, 80);
-        for (let s of firstBatch) {
-            await initSymbol(s); // 這會維持你原本那種一個一個跳出來的效果
+            .slice(0, 40);
+        
+        // 合併定選名單
+        const finalTargets = [...new Set([...pinnedSymbols, ...targets.map(t => t.symbol)])];
+        
+        // 分包處理：每 20 個一組，停 3 秒
+        for (let i = 0; i < finalTargets.length; i += 20) {
+            const chunk = finalTargets.slice(i, i + 20);
+            // 這一包 20 個同時抓取
+            await Promise.all(chunk.map(s => initSymbol(s)));
+            
+            // 如果還有下一包，就等 3 秒
+            if (i + 20 < finalTargets.length) {
+                await new Promise(r => setTimeout(r, 3000));
+            }
         }
-
-        // 啟動串流
+        
         startWS();
-
-        // 2. 第二階段：剩下的進入封包模式 (每 20 個一組，停 3 秒)
-        const remaining = targets.slice(80);
-        await packetRunner(remaining);
-    }
-
-    // 封包遞補器 (不改動 initSymbol，僅控制發送節奏)
-    async function packetRunner(list) {
-        if (list.length === 0) return;
-        const packet = list.splice(0, 20);
-        
-        // 同時抓這 20 個的基礎數據
-        await Promise.all(packet.map(s => initSymbol(s)));
-        
-        // 抓完這包，停 3 秒再抓下一包
-        await new Promise(r => setTimeout(r, 3000));
-        return packetRunner(list);
     }
 
     function startWS() {
