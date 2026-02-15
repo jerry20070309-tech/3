@@ -2,30 +2,37 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>⚡ TRIDENT V44 PRO</title>
+<title>TRIDENT V45 PRO</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 body{background:#050505;color:#d4d4d8;font-family:monospace}
-.card{background:#111;border:1px solid #222;border-radius:8px;padding:12px}
-.long{border:2px solid #16a34a;background:#06210f}
+.card{background:#111;border:1px solid #222;border-radius:8px;padding:12px;transition:0.3s}
+.strong{border:2px solid #22c55e;background:#06210f}
+.best{border:2px solid #00ff88;background:#003322}
 </style>
 </head>
 <body class="p-6">
 
-<h1 class="text-2xl font-bold text-white mb-4">
-TRIDENT V44 – PRO LONG SCANNER
-</h1>
+<div class="flex gap-6">
 
-<button onclick="ignite()" class="bg-green-600 px-4 py-2 rounded text-white font-bold">
-啟動掃描
-</button>
+<div class="flex-1">
+<h1 class="text-2xl font-bold mb-4">TRIDENT V45 PRO</h1>
+<button onclick="ignite()" class="bg-green-600 px-4 py-2 rounded text-white font-bold">啟動掃描</button>
+<div id="list" class="grid grid-cols-3 gap-4 mt-6"></div>
+</div>
 
-<div id="list" class="grid grid-cols-4 gap-4 mt-6"></div>
+<div class="w-80 border border-zinc-700 p-3 rounded">
+<h2 class="font-bold mb-2">Signal Log</h2>
+<div id="log" class="text-sm space-y-2"></div>
+</div>
+
+</div>
 
 <script>
 
-const EXCLUDE=['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT'];
+const EXCLUDE=['BTCUSDT','ETHUSDT']
 let marketData={}
+let livePrice={}
 let btcReturn=0
 let running=false
 
@@ -33,7 +40,8 @@ async function ignite(){
 if(running)return
 running=true
 await loadBTC()
-await refreshUniverse()
+await loadUniverse()
+setInterval(recalculateAll,30000)
 startWS()
 }
 
@@ -42,12 +50,10 @@ const k=await fetch('https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&inte
 btcReturn=(k[1][4]-k[0][1])/k[0][1]
 }
 
-async function refreshUniverse(){
+async function loadUniverse(){
 const tickers=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json())
-const top=tickers
-.filter(t=>t.symbol.endsWith('USDT')&&!EXCLUDE.includes(t.symbol))
-.sort((a,b)=>b.quoteVolume-a.quoteVolume)
-.slice(0,40)
+const top=tickers.filter(t=>t.symbol.endsWith('USDT')&&!EXCLUDE.includes(t.symbol))
+.sort((a,b)=>b.quoteVolume-a.quoteVolume).slice(0,40)
 
 for(let t of top){
 await initSymbol(t.symbol)
@@ -61,52 +67,7 @@ const oi15=await getOI(s,'15m')
 const oi1h=await getOI(s,'1h')
 const funding=await getFunding(s)
 
-marketData[s]={
-klines:k,
-poc:calcPOC(k),
-vwap:calcVWAP(k),
-emaSlope:calcSlope(k),
-oi15,
-oi1h,
-funding,
-avgVol:k.reduce((a,b)=>a+parseFloat(b[5]),0)/k.length,
-lastPrice:parseFloat(k[k.length-1][4])
-}
-}
-
-function calcVWAP(k){
-let pv=0,v=0
-k.forEach(c=>{
-pv+=parseFloat(c[4])*parseFloat(c[5])
-v+=parseFloat(c[5])
-})
-return pv/v
-}
-
-function calcPOC(k){
-let bins={}
-let prices=k.map(c=>parseFloat(c[4]))
-let min=Math.min(...prices)
-let max=Math.max(...prices)
-let step=(max-min)/20||0.00001
-k.forEach(c=>{
-let p=parseFloat(c[4])
-let vol=parseFloat(c[5])
-let bin=Math.floor((p-min)/step)*step+min
-bins[bin]=(bins[bin]||0)+vol
-})
-return parseFloat(Object.keys(bins).reduce((a,b)=>bins[a]>bins[b]?a:b))
-}
-
-function calcSlope(k){
-let closes=k.map(c=>parseFloat(c[4]))
-let ema=[]
-let multiplier=2/(20+1)
-closes.forEach((c,i)=>{
-if(i==0) ema.push(c)
-else ema.push((c-ema[i-1])*multiplier+ema[i-1])
-})
-return ema[ema.length-1]-ema[ema.length-5]
+marketData[s]={klines:k,oi15,oi1h,funding}
 }
 
 async function getOI(s,p){
@@ -123,70 +84,107 @@ return d.length?parseFloat(d[0].fundingRate):0
 function startWS(){
 const ws=new WebSocket('wss://fstream.binance.com/ws/!ticker@arr')
 ws.onmessage=e=>{
-let signals=[]
 JSON.parse(e.data).forEach(m=>{
-let base=marketData[m.s]
-if(!base)return
-
-let price=parseFloat(m.c)
-let volRatio=(parseFloat(m.q)/1440*15)/base.avgVol
-let rel=((price-base.lastPrice)/base.lastPrice)-btcReturn
-
-let nearPOC=Math.abs(price-base.poc)/base.poc<0.002
-let breakout=price>Math.max(...base.klines.slice(-20).map(c=>parseFloat(c[2])))
-
-let fundingOK=Math.abs(base.funding)<0.01
-
-let pullbackSignal=
-price>base.poc&&
-price>base.vwap&&
-base.oi15>0&&
-base.oi1h>0&&
-base.emaSlope>0&&
-fundingOK&&
-nearPOC&&
-rel>0
-
-let breakoutSignal=
-breakout&&
-volRatio>2&&
-base.oi15>0&&
-base.emaSlope>0&&
-rel>0&&
-fundingOK
-
-if(pullbackSignal||breakoutSignal){
-let score=base.oi15+base.oi1h+(base.emaSlope*100)+volRatio*10
-signals.push({symbol:m.s,price,score,type:pullbackSignal?'PULLBACK':'BREAKOUT',base})
-}
+livePrice[m.s]={price:parseFloat(m.c),vol:parseFloat(m.q)}
 })
-
-signals.sort((a,b)=>b.score-a.score)
-renderSignals(signals.slice(0,8))
 }
 }
 
-function renderSignals(list){
+function recalculateAll(){
+let result=[]
+for(let s in marketData){
+if(!livePrice[s])continue
+
+let base=marketData[s]
+let price=livePrice[s].price
+let volRatio=(livePrice[s].vol/1440*15)/avgVol(base.klines)
+
+let poc=calcPOC(base.klines)
+let vwap=calcVWAP(base.klines)
+let slope=calcSlope(base.klines)
+let breakout=price>Math.max(...base.klines.slice(-20).map(c=>parseFloat(c[2])))
+let rel=((price-base.klines.at(-1)[4])/base.klines.at(-1)[4])-btcReturn
+
+let score=0
+let missing=0
+
+function cond(ok,val){ if(ok)score+=val; else missing++ }
+
+cond(base.oi15>0,15)
+cond(base.oi1h>0,15)
+cond(slope>0,15)
+cond(price>poc,10)
+cond(price>vwap,10)
+cond(rel>0,10)
+cond(Math.abs(base.funding)<0.01,5)
+cond(volRatio>1.5,10)
+cond(breakout,10)
+
+if(score>=60){
+result.push({s,price,score,missing})
+if(score>=85) addLog(s,score)
+}
+}
+
+result.sort((a,b)=>b.score-a.score)
+render(result)
+}
+
+function render(list){
 document.getElementById('list').innerHTML=''
 list.forEach(item=>{
-let s=item.symbol
-let price=item.price
-let base=item.base
-let sl=base.poc*0.996
-let tp=price+(price-sl)*2.5
-
 let div=document.createElement('div')
-div.className='card long'
+div.className='card'
+if(item.score>=70)div.classList.add('strong')
+if(item.score>=85)div.classList.add('best')
+
 div.innerHTML=`
-<div class="font-bold text-white">${s}</div>
-<div>Mode: ${item.type}</div>
-<div>Price: ${price.toFixed(4)}</div>
-<div>Score: ${item.score.toFixed(2)}</div>
-<div class="text-green-400">SL: ${sl.toFixed(4)}</div>
-<div class="text-green-400">TP: ${tp.toFixed(4)}</div>
+<div class="font-bold">${item.s}</div>
+<div>Price: ${item.price.toFixed(4)}</div>
+<div>Score: ${item.score}</div>
+<div>差 ${item.missing} 條件</div>
 `
 document.getElementById('list').appendChild(div)
 })
+}
+
+function addLog(s,score){
+let log=document.getElementById('log')
+let div=document.createElement('div')
+div.innerHTML=`<span class="text-green-400">${s}</span> 強信號 ${score}`
+log.prepend(div)
+}
+
+function calcVWAP(k){
+let pv=0,v=0
+k.forEach(c=>{pv+=c[4]*c[5];v+=c[5]})
+return pv/v
+}
+
+function calcPOC(k){
+let bins={}
+let prices=k.map(c=>parseFloat(c[4]))
+let min=Math.min(...prices)
+let max=Math.max(...prices)
+let step=(max-min)/20||0.00001
+k.forEach(c=>{
+let p=parseFloat(c[4]),vol=parseFloat(c[5])
+let bin=Math.floor((p-min)/step)*step+min
+bins[bin]=(bins[bin]||0)+vol
+})
+return parseFloat(Object.keys(bins).reduce((a,b)=>bins[a]>bins[b]?a:b))
+}
+
+function calcSlope(k){
+let closes=k.map(c=>parseFloat(c[4]))
+let ema=[]
+let m=2/(20+1)
+closes.forEach((c,i)=>{ema.push(i?((c-ema[i-1])*m+ema[i-1]):c)})
+return ema.at(-1)-ema.at(-5)
+}
+
+function avgVol(k){
+return k.reduce((a,b)=>a+parseFloat(b[5]),0)/k.length
 }
 
 </script>
