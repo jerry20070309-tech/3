@@ -2,23 +2,35 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>TRIDENT V45 PRO</title>
+<title>TRIDENT V46 PRO</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 body{background:#050505;color:#d4d4d8;font-family:monospace}
-.card{background:#111;border:1px solid #222;border-radius:8px;padding:12px;transition:0.3s}
-.strong{border:2px solid #22c55e;background:#06210f}
-.best{border:2px solid #00ff88;background:#003322}
+.bar{height:18px;border-radius:4px;transition:0.3s}
 </style>
 </head>
 <body class="p-6">
 
+<h1 class="text-2xl font-bold mb-4">TRIDENT V46 PRO</h1>
+<button onclick="ignite()" class="bg-green-600 px-4 py-2 rounded text-white font-bold mb-4">
+啟動掃描
+</button>
+
+<!-- 進度條 -->
+<div class="mb-6">
+<div class="flex justify-between text-xs mb-1">
+<span>策略重算倒數</span>
+<span id="countdown">等待資料</span>
+</div>
+<div class="w-full bg-zinc-800 h-2 rounded overflow-hidden">
+<div id="progressBar" class="bg-emerald-500 h-2" style="width:100%"></div>
+</div>
+</div>
+
 <div class="flex gap-6">
 
 <div class="flex-1">
-<h1 class="text-2xl font-bold mb-4">TRIDENT V45 PRO</h1>
-<button onclick="ignite()" class="bg-green-600 px-4 py-2 rounded text-white font-bold">啟動掃描</button>
-<div id="list" class="grid grid-cols-3 gap-4 mt-6"></div>
+<div id="list" class="space-y-3"></div>
 </div>
 
 <div class="w-80 border border-zinc-700 p-3 rounded">
@@ -35,13 +47,16 @@ let marketData={}
 let livePrice={}
 let btcReturn=0
 let running=false
+let timerStarted=false
+
+const RELOAD_INTERVAL=30000
+let elapsed=0
 
 async function ignite(){
 if(running)return
 running=true
 await loadBTC()
 await loadUniverse()
-setInterval(recalculateAll,30000)
 startWS()
 }
 
@@ -66,8 +81,15 @@ const k=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interva
 const oi15=await getOI(s,'15m')
 const oi1h=await getOI(s,'1h')
 const funding=await getFunding(s)
-
 marketData[s]={klines:k,oi15,oi1h,funding}
+}
+
+async function refreshSymbol(s){
+const k=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=100`).then(r=>r.json())
+marketData[s].klines=k
+marketData[s].oi15=await getOI(s,'15m')
+marketData[s].oi1h=await getOI(s,'1h')
+marketData[s].funding=await getFunding(s)
 }
 
 async function getOI(s,p){
@@ -83,17 +105,30 @@ return d.length?parseFloat(d[0].fundingRate):0
 
 function startWS(){
 const ws=new WebSocket('wss://fstream.binance.com/ws/!ticker@arr')
+
 ws.onmessage=e=>{
 JSON.parse(e.data).forEach(m=>{
 livePrice[m.s]={price:parseFloat(m.c),vol:parseFloat(m.q)}
 })
+
+if(!timerStarted && Object.keys(livePrice).length>0){
+timerStarted=true
+recalculateAll()
+setInterval(recalculateAll,RELOAD_INTERVAL)
+startProgressTimer()
+}
 }
 }
 
-function recalculateAll(){
+async function recalculateAll(){
+
 let result=[]
+
 for(let s in marketData){
-if(!livePrice[s])continue
+
+if(!livePrice[s]) continue
+
+await refreshSymbol(s)
 
 let base=marketData[s]
 let price=livePrice[s].price
@@ -107,7 +142,6 @@ let rel=((price-base.klines.at(-1)[4])/base.klines.at(-1)[4])-btcReturn
 
 let score=0
 let missing=0
-
 function cond(ok,val){ if(ok)score+=val; else missing++ }
 
 cond(base.oi15>0,15)
@@ -117,13 +151,14 @@ cond(price>poc,10)
 cond(price>vwap,10)
 cond(rel>0,10)
 cond(Math.abs(base.funding)<0.01,5)
-cond(volRatio>1.5,10)
+cond(volRatio>1.3,10)
 cond(breakout,10)
 
-if(score>=60){
+if(score>=50){
 result.push({s,price,score,missing})
 if(score>=85) addLog(s,score)
 }
+
 }
 
 result.sort((a,b)=>b.score-a.score)
@@ -131,28 +166,56 @@ render(result)
 }
 
 function render(list){
-document.getElementById('list').innerHTML=''
-list.forEach(item=>{
-let div=document.createElement('div')
-div.className='card'
-if(item.score>=70)div.classList.add('strong')
-if(item.score>=85)div.classList.add('best')
 
+const container=document.getElementById('list')
+container.innerHTML=''
+
+if(list.length===0){
+container.innerHTML='<div class="text-zinc-500">目前沒有符合條件幣</div>'
+return
+}
+
+list.forEach(item=>{
+
+let color='bg-zinc-600'
+if(item.score>=85) color='bg-emerald-400'
+else if(item.score>=70) color='bg-green-500'
+
+let div=document.createElement('div')
 div.innerHTML=`
-<div class="font-bold">${item.s}</div>
-<div>Price: ${item.price.toFixed(4)}</div>
-<div>Score: ${item.score}</div>
-<div>差 ${item.missing} 條件</div>
+<div class="flex justify-between text-sm mb-1">
+<span class="font-bold">${item.s}</span>
+<span>${item.score}</span>
+</div>
+<div class="w-full bg-zinc-800 bar">
+<div class="${color} bar" style="width:${item.score}%"></div>
+</div>
+<div class="text-xs text-zinc-400 mt-1">
+差 ${item.missing} 條件
+</div>
 `
-document.getElementById('list').appendChild(div)
+container.appendChild(div)
+
 })
 }
 
 function addLog(s,score){
 let log=document.getElementById('log')
 let div=document.createElement('div')
-div.innerHTML=`<span class="text-green-400">${s}</span> 強信號 ${score}`
+div.innerHTML=`<span class="text-emerald-400">${s}</span> 強信號 ${score}`
 log.prepend(div)
+}
+
+function startProgressTimer(){
+elapsed=0
+setInterval(()=>{
+elapsed+=100
+let remain=RELOAD_INTERVAL-elapsed
+if(remain<0)elapsed=0
+let percent=100-(elapsed/RELOAD_INTERVAL*100)
+document.getElementById('progressBar').style.width=percent+'%'
+document.getElementById('countdown').innerText=Math.ceil(remain/1000)+'s'
+},100)
 }
 
 function calcVWAP(k){
