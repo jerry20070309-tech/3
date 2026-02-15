@@ -2,183 +2,205 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>TRIDENT V48 PRO</title>
+<title>TRIDENT V50 PRO</title>
+<script src="https://cdn.tailwindcss.com"></script>
 <style>
-body{background:#000;color:#0f0;font-family:monospace;padding:20px}
-button{padding:10px 20px;background:#0f0;color:#000;font-weight:bold}
-.card{border:1px solid #222;padding:10px;margin:6px 0}
-.score{float:right}
-.log{position:fixed;right:20px;top:20px;width:280px;height:400px;
-border:1px solid #333;padding:10px;overflow:auto;background:#111}
+body{background:#000;color:#fff;font-family:monospace}
+.card{background:#111;border:1px solid #222;padding:12px;margin-bottom:8px}
+.bar{height:6px;background:#222;margin-top:6px}
+.fill{height:6px;background:#00ff88}
+.log{background:#111;border:1px solid #333;height:300px;overflow:auto;padding:10px}
 </style>
 </head>
-<body>
+<body class="p-6">
 
-<h2>TRIDENT V48 PRO</h2>
-<button onclick="ignite()">啟動掃描</button>
+<h1 class="text-xl mb-4">TRIDENT V50 PRO</h1>
+<button onclick="ignite()" class="bg-green-600 px-4 py-2 mb-4">啟動掃描</button>
 
-<div id="progress" style="height:4px;background:#222;margin:10px 0;">
-<div id="bar" style="height:4px;width:0%;background:#0f0;"></div>
+<div id="progress" class="bar mb-4"><div id="progressFill" class="fill" style="width:0%"></div></div>
+
+<div class="flex gap-6">
+<div class="flex-1" id="list"></div>
+<div class="w-80">
+<div class="log" id="log"></div>
 </div>
-
-<div id="list"></div>
-
-<div class="log">
-<b>Signal Log</b>
-<div id="log"></div>
 </div>
 
 <script>
 
-const FULL_SCAN_LIMIT = 400
-const ACTIVE_SCAN_LIMIT = 100
+const FIRST_SCAN = 400
+const ACTIVE_LIMIT = 100
 const REFRESH_INTERVAL = 30000
+const OI_INTERVAL = 300000
+const FUNDING_INTERVAL = 600000
 
 let universe = []
 let activeSymbols = []
 let market = {}
-let ws = null
+let ws
 let alerted = new Set()
 
-// 🔥 第一次抓 400 隻
-async function loadFullUniverse(){
+// ===== 啟動 =====
 
-const res = await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr")
-const data = await res.json()
+async function ignite(){
+await loadUniverse()
+await initActive()
+startWS()
+startTimers()
+}
 
-universe = data
-.filter(d=>d.symbol.endsWith("USDT"))
+// ===== 第一次抓400 =====
+
+async function loadUniverse(){
+const tickers = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json())
+universe = tickers
+.filter(t=>t.symbol.endsWith('USDT'))
 .sort((a,b)=>b.quoteVolume-a.quoteVolume)
-.slice(0,FULL_SCAN_LIMIT)
-.map(d=>d.symbol)
-
-console.log("FULL:",universe.length)
+.slice(0,FIRST_SCAN)
+.map(t=>t.symbol)
 }
 
-// 🔥 每 30 秒只挑前 100
-function updateActiveList(){
-activeSymbols = universe.slice(0,ACTIVE_SCAN_LIMIT)
+// ===== 只抓前100完整資料 =====
+
+async function initActive(){
+activeSymbols = universe.slice(0,ACTIVE_LIMIT)
+
+for(const s of activeSymbols){
+await loadSymbolData(s)
+}
+render()
 }
 
-// 🔥 初始化 100 隻
-async function initActiveSymbols(){
+async function loadSymbolData(s){
 
-for(let s of activeSymbols){
-
-const k = await fetch(
-`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=50`
-).then(r=>r.json())
+const k = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=50`).then(r=>r.json())
+const oi = await fetch(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${s}&period=15m&limit=2`).then(r=>r.json())
+const funding = await fetch(`https://fapi.binance.com/fapi/v1/fundingRate?symbol=${s}&limit=1`).then(r=>r.json())
 
 const closes = k.map(x=>parseFloat(x[4]))
-
-const slope = closes[49] - closes[0]
-const avg = closes.reduce((a,b)=>a+b,0)/closes.length
+const slope = (closes.at(-1)-closes[0])/closes[0]*100
 
 market[s] = {
-price: closes[49],
+price: closes.at(-1),
+avg: closes.reduce((a,b)=>a+b)/closes.length,
 slope,
-avg,
-score: calcScore(slope,closes[49],avg)
+oi: oi.length>1 ? (oi[1].sumOpenInterest-oi[0].sumOpenInterest)/oi[0].sumOpenInterest*100 : 0,
+funding: funding[0]? parseFloat(funding[0].fundingRate)*100 : 0,
+score:0
 }
 
-}
+calcScore(s)
 }
 
-// 🔥 計分
-function calcScore(slope,price,avg){
-
+function calcScore(s){
+const d = market[s]
 let score = 0
 
-if(slope>0) score+=30
-if(price>avg) score+=30
-if(slope>avg*0.01) score+=40
+if(d.price > d.avg) score+=20
+if(d.slope > 1) score+=20
+if(d.oi > 0) score+=20
+if(d.funding > -0.01) score+=20
+if(d.price > d.avg*1.01) score+=20
 
-return score
-}
+d.score = score
 
-// 🔥 只訂閱前100
-function startWS(){
-
-if(ws) ws.close()
-
-const streams = activeSymbols
-.map(s=>s.toLowerCase()+"@ticker")
-.join("/")
-
-ws = new WebSocket(
-`wss://fstream.binance.com/stream?streams=${streams}`
-)
-
-ws.onmessage = e=>{
-const data = JSON.parse(e.data).data
-if(market[data.s]){
-market[data.s].price = parseFloat(data.c)
-}
-}
-}
-
-// 🔥 畫面
-function render(){
-
-const list = document.getElementById("list")
-list.innerHTML=""
-
-Object.entries(market)
-.sort((a,b)=>b[1].score-a[1].score)
-.forEach(([s,d])=>{
-
-const div=document.createElement("div")
-div.className="card"
-div.innerHTML=`${s}<span class="score">${d.score}</span>`
-list.appendChild(div)
-
-if(d.score>=90 && !alerted.has(s)){
-logSignal(s,d.score)
+if(score==100 && !alerted.has(s)){
+log("🔥 STRONG ENTRY "+s+" 100")
 alerted.add(s)
 }
+}
 
+// ===== 只重算 不再抓K線 =====
+
+function recalcAll(){
+activeSymbols.forEach(s=>calcScore(s))
+render()
+}
+
+// ===== OI更新 =====
+
+async function updateOI(){
+for(const s of activeSymbols){
+const oi = await fetch(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${s}&period=15m&limit=2`).then(r=>r.json())
+if(oi.length>1){
+market[s].oi = (oi[1].sumOpenInterest-oi[0].sumOpenInterest)/oi[0].sumOpenInterest*100
+}
+}
+}
+
+// ===== Funding更新 =====
+
+async function updateFunding(){
+for(const s of activeSymbols){
+const funding = await fetch(`https://fapi.binance.com/fapi/v1/fundingRate?symbol=${s}&limit=1`).then(r=>r.json())
+if(funding[0]){
+market[s].funding = parseFloat(funding[0].fundingRate)*100
+}
+}
+}
+
+// ===== WebSocket只更新價格 =====
+
+function startWS(){
+ws = new WebSocket("wss://fstream.binance.com/ws/!ticker@arr")
+ws.onmessage = e=>{
+const arr = JSON.parse(e.data)
+arr.forEach(t=>{
+if(market[t.s]){
+market[t.s].price = parseFloat(t.c)
+calcScore(t.s)
+}
 })
-
+render()
+}
 }
 
-// 🔥 訊號記錄
-function logSignal(symbol,score){
-const log=document.getElementById("log")
-const div=document.createElement("div")
-div.innerText="🔥 STRONG ENTRY "+symbol+" "+score
-log.prepend(div)
-}
+// ===== 計時器 =====
 
-// 🔥 進度條
-function startProgress(){
+function startTimers(){
+
 let elapsed=0
 setInterval(()=>{
 elapsed+=100
-let percent=(elapsed/REFRESH_INTERVAL)*100
-if(percent>=100) elapsed=0
-document.getElementById("bar").style.width=percent+"%"
+document.getElementById("progressFill").style.width=(elapsed/REFRESH_INTERVAL*100)+"%"
+if(elapsed>=REFRESH_INTERVAL){
+elapsed=0
+recalcAll()
+}
 },100)
+
+setInterval(updateOI,OI_INTERVAL)
+setInterval(updateFunding,FUNDING_INTERVAL)
 }
 
-// 🔥 主流程
-async function ignite(){
+// ===== UI =====
 
-await loadFullUniverse()   // 400 隻只一次
+function render(){
 
-updateActiveList()         // 取前100
-await initActiveSymbols()
-startWS()
-render()
-startProgress()
+const container=document.getElementById("list")
+container.innerHTML=""
 
-setInterval(async ()=>{
+activeSymbols
+.sort((a,b)=>market[b].score-market[a].score)
+.forEach(s=>{
+const d=market[s]
+const card=document.createElement("div")
+card.className="card"
+card.innerHTML=`
+<div class="flex justify-between">
+<div>${s}</div>
+<div>${d.score}</div>
+</div>
+<div class="bar"><div class="fill" style="width:${d.score}%"></div></div>
+`
+container.appendChild(card)
+})
+}
 
-updateActiveList()
-await initActiveSymbols()
-render()
-
-},REFRESH_INTERVAL)
-
+function log(t){
+const div=document.createElement("div")
+div.innerText=t
+document.getElementById("log").prepend(div)
 }
 
 </script>
