@@ -2,23 +2,23 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>TRIDENT V52 MID CAP</title>
+<title>TRIDENT V53 PRE BREAKOUT</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 body{background:#000;color:#fff;font-family:monospace}
-.card{background:#111;border:1px solid #222;padding:12px;margin-bottom:8px}
+.card{background:#111;border:1px solid #222;padding:12px;margin-bottom:10px}
 .bar{height:6px;background:#222;margin-top:6px}
 .fill{height:6px;background:#00ff88}
-.log{background:#111;border:1px solid #333;height:300px;overflow:auto;padding:10px}
+.log{background:#111;border:1px solid #333;height:260px;overflow:auto;padding:10px}
 </style>
 </head>
 <body class="p-6">
 
-<h1 class="text-xl mb-4">TRIDENT V52 MID CAP</h1>
+<h1 class="text-xl mb-4">TRIDENT V53 – PRE BREAKOUT</h1>
 <button onclick="ignite()" class="bg-green-600 px-4 py-2 mb-4">啟動掃描</button>
 
-<div id="progress" class="bar mb-4">
-<div id="progressFill" class="fill" style="width:0%"></div>
+<div class="bar mb-4">
+<div id="progress" class="fill" style="width:0%"></div>
 </div>
 
 <div class="flex gap-6">
@@ -30,7 +30,9 @@ body{background:#000;color:#fff;font-family:monospace}
 
 <script>
 
+const INITIAL_LOAD = 400
 const ACTIVE_LIMIT = 100
+const DISPLAY_LIMIT = 10
 const REFRESH_INTERVAL = 30000
 
 let universe=[]
@@ -39,11 +41,7 @@ let market={}
 let alerted=new Set()
 let ws
 
-// ===== 主流排除 =====
-const EXCLUDE = [
-"BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT",
-"XRPUSDT","ADAUSDT","DOGEUSDT"
-]
+const EXCLUDE=["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT","ADAUSDT"]
 
 // ===== 啟動 =====
 
@@ -54,31 +52,23 @@ startWS()
 startTimer()
 }
 
-// ===== 中段市場建池 =====
+// ===== 建立幣池 =====
 
 async function loadUniverse(){
 
 const tickers=await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr")
 .then(r=>r.json())
 
-const sorted=tickers
+universe=tickers
 .filter(t=>t.symbol.endsWith("USDT"))
 .filter(t=>!EXCLUDE.includes(t.symbol))
 .sort((a,b)=>b.quoteVolume-a.quoteVolume)
+.slice(30,430) // 排除前段
+.map(t=>t.symbol)
 
-// 切掉前30（類市值前段）
-const noTop=sorted.slice(30)
-
-// 切掉尾段低流動（最後120）
-const mid=noTop.slice(0,noTop.length-120)
-
-// 加成交量門檻
-const filtered=mid.filter(t=>parseFloat(t.quoteVolume)>20000000)
-
-universe=filtered.map(t=>t.symbol)
 }
 
-// ===== 只取前100做策略 =====
+// ===== 初始化100隻 =====
 
 async function initActive(){
 
@@ -91,46 +81,79 @@ await loadSymbol(s)
 render()
 }
 
+// ===== 抓完整策略數據 =====
+
 async function loadSymbol(s){
 
-const k=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=50`)
-.then(r=>r.json())
+const [k,oi15,oi1h,funding]=await Promise.all([
+fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=50`).then(r=>r.json()),
+fetch(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${s}&period=15m&limit=2`).then(r=>r.json()),
+fetch(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${s}&period=1h&limit=2`).then(r=>r.json()),
+fetch(`https://fapi.binance.com/fapi/v1/fundingRate?symbol=${s}&limit=1`).then(r=>r.json())
+])
 
 const closes=k.map(x=>parseFloat(x[4]))
+const vols=k.map(x=>parseFloat(x[5]))
+
+const high=Math.max(...closes)
+const low=Math.min(...closes)
+const price=closes.at(-1)
+
+const slope=(price-closes[0])/closes[0]*100
+const avgVol=vols.reduce((a,b)=>a+b)/vols.length
+const volRatio=vols.at(-1)/avgVol
+
+const oi15delta=calcDelta(oi15)
+const oi1hdelta=calcDelta(oi1h)
+
+const fundingRate=parseFloat(funding[0]?.fundingRate||0)
 
 market[s]={
-price:closes.at(-1),
-avg:closes.reduce((a,b)=>a+b)/closes.length,
-slope:(closes.at(-1)-closes[0])/closes[0]*100,
+price,high,low,slope,volRatio,
+oi15:oi15delta,
+oi1h:oi1hdelta,
+funding:fundingRate,
 score:0
 }
 
 calcScore(s)
 }
 
+function calcDelta(data){
+if(!data||data.length<2) return 0
+return (parseFloat(data[1].sumOpenInterest)
+-parseFloat(data[0].sumOpenInterest))
+/parseFloat(data[0].sumOpenInterest)*100
+}
+
+// ===== 爆發評分 =====
+
 function calcScore(s){
 
 const d=market[s]
 let score=0
 
-if(d.price>d.avg) score+=25
-if(d.slope>1.2) score+=25
-if(d.price>d.avg*1.01) score+=25
-if(d.slope>2) score+=25
+// 1 接近突破
+if(d.price>d.high*0.985) score+=20
+
+// 2 動能剛起
+if(d.slope>1.5 && d.slope<6) score+=20
+
+// 3 成交量放大
+if(d.volRatio>1.8) score+=20
+
+// 4 OI 同步增
+if(d.oi15>0.5 && d.oi1h>0.5) score+=20
+
+// 5 Funding 正常
+if(Math.abs(d.funding)<0.01) score+=20
 
 d.score=score
 
 if(score==100 && !alerted.has(s)){
-log("🔥 STRONG ENTRY "+s+" 100")
+log("🚀 BREAKOUT READY "+s+" 100")
 alerted.add(s)
 }
-}
-
-// ===== 只重算 不重抓K線 =====
-
-function recalc(){
-active.forEach(s=>calcScore(s))
-render()
 }
 
 // ===== WebSocket 只更新價格 =====
@@ -159,12 +182,13 @@ let elapsed=0
 
 setInterval(()=>{
 elapsed+=100
-document.getElementById("progressFill").style.width=
+document.getElementById("progress").style.width=
 (elapsed/REFRESH_INTERVAL*100)+"%"
 
 if(elapsed>=REFRESH_INTERVAL){
 elapsed=0
-recalc()
+active.forEach(s=>calcScore(s))
+render()
 }
 },100)
 
@@ -179,6 +203,7 @@ container.innerHTML=""
 
 active
 .sort((a,b)=>market[b].score-market[a].score)
+.slice(0,DISPLAY_LIMIT)
 .forEach(s=>{
 const d=market[s]
 const card=document.createElement("div")
