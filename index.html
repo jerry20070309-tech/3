@@ -2,223 +2,196 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>TRIDENT V56 PRO</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<title>TRIDENT V58 - ATR ENGINE</title>
 <style>
-body{background:#000;color:#fff;font-family:monospace}
-.card{background:#111;border:1px solid #222;padding:12px;margin-bottom:12px}
-.bar{height:6px;background:#222;margin-top:6px}
-.fill{height:6px;background:#00ff88}
-.log{background:#111;border:1px solid #333;height:240px;overflow:auto;padding:10px}
-.small{font-size:12px;color:#aaa}
-input{background:#111;border:1px solid #333;padding:4px;color:#fff;width:100%}
+body{
+    background:#000;
+    color:#00ff9d;
+    font-family:monospace;
+}
+.container{width:1200px;margin:auto;}
+input{
+    background:#111;
+    border:1px solid #00ff9d;
+    color:#00ff9d;
+    padding:5px;
+    width:100px;
+}
+button{
+    background:#00ff9d;
+    color:#000;
+    padding:6px 12px;
+    border:none;
+    cursor:pointer;
+}
+.card{
+    border:1px solid #00ff9d;
+    padding:10px;
+    margin:10px 0;
+}
+.bar{
+    height:6px;
+    background:#222;
+    margin:5px 0;
+}
+.barfill{
+    height:6px;
+    background:#00ff9d;
+}
+.progress{
+    height:5px;
+    background:#00ff9d;
+    transition:width 1s linear;
+}
 </style>
 </head>
-<body class="p-6">
+<body>
 
-<h1 class="text-xl mb-4">TRIDENT V56 – PRO RISK ENGINE</h1>
+<div class="container">
 
-<div class="flex gap-4 mb-4">
+<h2>TRIDENT V58 - FIXED ATR x2</h2>
 
-<div>
-<div class="small">帳戶資金</div>
-<input type="number" id="accountInput" value="10000">
+保證金:
+<input id="margin" value="100">
+槓桿:
+<input id="leverage" value="10">
+<button onclick="start()">開始掃描</button>
+
+<div class="bar">
+    <div id="timebar" class="progress" style="width:0%"></div>
 </div>
 
-<div>
-<div class="small">風險 %</div>
-<input type="number" id="riskInput" value="1" step="0.1">
-</div>
+<div id="results"></div>
 
-<div>
-<div class="small">槓桿</div>
-<input type="number" id="leverageInput" value="5">
-</div>
-
-<button onclick="ignite()" class="bg-green-600 px-4 py-2 mt-5">
-啟動
-</button>
-
-</div>
-
-<div class="bar mb-4">
-<div id="progressFill" class="fill" style="width:0%"></div>
-</div>
-
-<div class="flex gap-6">
-<div class="flex-1" id="list"></div>
-<div class="w-80">
-<div class="log" id="log"></div>
-</div>
 </div>
 
 <script>
 
-const REFRESH_INTERVAL=30000
-const DISPLAY_LIMIT=8
+let symbols = []
+let dataStore = {}
+let timer
 
-let universe=[]
-let active=[]
-let market={}
-let alerted=new Set()
-let elapsed=0
+async function start(){
 
-// ===== 啟動 =====
+    document.getElementById("results").innerHTML=""
 
-async function ignite(){
-await loadUniverse()
-await initActive()
-startWS()
-startTimer()
+    const tickers = await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr")
+        .then(r=>r.json())
+
+    // 只取成交量前100
+    symbols = tickers
+        .filter(t=>t.symbol.endsWith("USDT"))
+        .sort((a,b)=>b.quoteVolume-a.quoteVolume)
+        .slice(0,100)
+        .map(t=>t.symbol)
+
+    scan()
+
+    if(timer) clearInterval(timer)
+    timer = setInterval(()=>{
+        scan()
+    },30000)
+
+    progressBar()
 }
 
-// ===== 幣池 =====
-
-async function loadUniverse(){
-const tickers=await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr")
-.then(r=>r.json())
-
-universe=tickers
-.filter(t=>t.symbol.endsWith("USDT"))
-.sort((a,b)=>b.quoteVolume-a.quoteVolume)
-.slice(30,200)
-.map(t=>t.symbol)
+function progressBar(){
+    let bar = document.getElementById("timebar")
+    let percent = 0
+    bar.style.width="0%"
+    let interval = setInterval(()=>{
+        percent+=3.33
+        bar.style.width=percent+"%"
+        if(percent>=100){
+            clearInterval(interval)
+            progressBar()
+        }
+    },1000)
 }
 
-async function initActive(){
-active=universe.slice(0,100)
-for(const s of active){
-await loadSymbol(s)
-}
-render()
-}
+async function scan(){
 
-// ===== 讀數據 =====
+    const margin = parseFloat(document.getElementById("margin").value)
+    const leverage = parseFloat(document.getElementById("leverage").value)
+    const capital = margin*leverage
 
-async function loadSymbol(s){
+    let results=[]
 
-const k=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=50`)
-.then(r=>r.json())
+    for(let s of symbols){
 
-const closes=k.map(x=>parseFloat(x[4]))
-const lows=k.map(x=>parseFloat(x[3]))
-const price=closes.at(-1)
+        const k = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=50`)
+            .then(r=>r.json())
 
-market[s]={
-price,
-high:Math.max(...closes),
-structureLow:Math.min(...lows.slice(-10)),
-score:80
-}
-}
+        if(!k || k.length<30) continue
 
-// ===== 計算交易 =====
+        const closes = k.map(x=>parseFloat(x[4]))
+        const highs = k.map(x=>parseFloat(x[2]))
+        const lows = k.map(x=>parseFloat(x[3]))
 
-function computeTrade(d){
+        const entry = closes[closes.length-1]
 
-const account=parseFloat(accountInput.value)
-const riskPercent=parseFloat(riskInput.value)
-const leverage=parseFloat(leverageInput.value)
+        // 結構止損 = 最近10根最低
+        const stop = Math.min(...lows.slice(-10))
 
-const entry=d.price
-const stop=d.structureLow
-const risk=entry-stop
-if(risk<=0) return null
+        const risk = entry-stop
+        if(risk<=0) continue
 
-const tp=entry+risk*2
-const rr=2
+        // ATR(20)
+        let ranges=[]
+        for(let i=1;i<k.length;i++){
+            ranges.push(highs[i]-lows[i])
+        }
+        const atr = ranges.slice(-20).reduce((a,b)=>a+b)/20
 
-const riskCapital=account*(riskPercent/100)
-const rawPosition=riskCapital/risk
-const positionSize=rawPosition*leverage
-const marginUsed=(positionSize*entry)/leverage
+        // 固定 ATR x2
+        const tp = entry + atr*2
 
-// ===== 動態移動止損 =====
+        const qty = capital/entry
+        const maxProfit = (tp-entry)*qty
+        const profitRate = (maxProfit/margin)*100
 
-let trailingStop=stop
+        const stormRatio = (tp-entry)/risk
 
-if(d.price>=entry+risk){
-trailingStop=entry
-}
-if(d.price>=entry+risk*2){
-trailingStop=entry+risk
-}
+        // 評分系統
+        let score=0
+        if(stormRatio>2) score+=25
+        if(profitRate>20) score+=25
+        if(atr/entry>0.01) score+=25
+        if(entry>stop) score+=25
 
-return {
-entry,stop,trailingStop,tp,
-rr,positionSize,marginUsed
-}
-}
+        results.push({
+            symbol:s,
+            entry,
+            stop,
+            tp,
+            stormRatio,
+            profitRate,
+            score
+        })
+    }
 
-// ===== WebSocket =====
-
-function startWS(){
-const ws=new WebSocket("wss://fstream.binance.com/ws/!ticker@arr")
-
-ws.onmessage=e=>{
-const arr=JSON.parse(e.data)
-arr.forEach(t=>{
-if(market[t.s]){
-market[t.s].price=parseFloat(t.c)
-}
-})
-}
+    results.sort((a,b)=>b.score-a.score)
+    render(results.slice(0,15))
 }
 
-// ===== 固定進度條 =====
+function render(list){
 
-function startTimer(){
+    const box=document.getElementById("results")
+    box.innerHTML=""
 
-setInterval(()=>{
+    for(let d of list){
 
-elapsed+=100
-
-if(elapsed>=REFRESH_INTERVAL){
-elapsed=0
-}
-
-progressFill.style.width=
-(elapsed/REFRESH_INTERVAL*100)+"%"
-
-render()
-
-},100)
-
-}
-
-// ===== UI =====
-
-function render(){
-
-list.innerHTML=""
-
-active.slice(0,DISPLAY_LIMIT).forEach(s=>{
-
-const d=market[s]
-if(!d) return
-
-const trade=computeTrade(d)
-if(!trade) return
-
-const card=document.createElement("div")
-card.className="card"
-
-card.innerHTML=`
-<div>${s}</div>
-<div class="small">
-Entry: ${trade.entry.toFixed(4)}<br>
-Stop: ${trade.stop.toFixed(4)}<br>
-Trailing SL: ${trade.trailingStop.toFixed(4)}<br>
-TP: ${trade.tp.toFixed(4)}<br>
-槓桿後倉位: ${trade.positionSize.toFixed(2)}<br>
-保證金: ${trade.marginUsed.toFixed(2)}
-</div>
-`
-
-list.appendChild(card)
-
-})
-
+        box.innerHTML+=`
+        <div class="card">
+            <b>${d.symbol}</b> | Score: ${d.score}
+            <div>Entry: ${d.entry.toFixed(4)}</div>
+            <div>Stop: ${d.stop.toFixed(4)}</div>
+            <div>TP (2xATR): ${d.tp.toFixed(4)}</div>
+            <div>Storm比: ${d.stormRatio.toFixed(2)}</div>
+            <div>最大收益率: ${d.profitRate.toFixed(2)}%</div>
+        </div>
+        `
+    }
 }
 
 </script>
