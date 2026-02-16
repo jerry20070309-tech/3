@@ -2,196 +2,233 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>TRIDENT V58 - ATR ENGINE</title>
+<title>TRIDENT V60 PRO</title>
 <style>
 body{
-    background:#000;
-    color:#00ff9d;
-    font-family:monospace;
-}
-.container{width:1200px;margin:auto;}
-input{
-    background:#111;
-    border:1px solid #00ff9d;
-    color:#00ff9d;
-    padding:5px;
-    width:100px;
-}
-button{
-    background:#00ff9d;
-    color:#000;
-    padding:6px 12px;
-    border:none;
-    cursor:pointer;
+background:#000;
+color:#0f0;
+font-family:monospace;
+padding:20px;
 }
 .card{
-    border:1px solid #00ff9d;
-    padding:10px;
-    margin:10px 0;
+border:1px solid #222;
+padding:15px;
+margin-bottom:15px;
+background:#0a0a0a;
+}
+.log{
+position:fixed;
+right:20px;
+top:20px;
+width:300px;
+height:400px;
+border:1px solid #333;
+padding:10px;
+overflow:auto;
+background:#050505;
 }
 .bar{
-    height:6px;
-    background:#222;
-    margin:5px 0;
+height:5px;
+background:#0f0;
+margin-bottom:15px;
+transition:width 1s linear;
 }
-.barfill{
-    height:6px;
-    background:#00ff9d;
+input{
+background:#111;
+border:1px solid #333;
+color:#0f0;
+padding:5px;
+margin-right:10px;
+width:80px;
 }
-.progress{
-    height:5px;
-    background:#00ff9d;
-    transition:width 1s linear;
+button{
+background:#0f0;
+color:#000;
+border:none;
+padding:8px 15px;
+cursor:pointer;
+}
+.tag{
+display:inline-block;
+padding:2px 6px;
+background:#111;
+margin-right:5px;
+margin-top:5px;
+border:1px solid #333;
+font-size:12px;
 }
 </style>
 </head>
 <body>
 
-<div class="container">
-
-<h2>TRIDENT V58 - FIXED ATR x2</h2>
+<h2>TRIDENT V60 PRO</h2>
 
 保證金:
 <input id="margin" value="100">
 槓桿:
 <input id="leverage" value="10">
-<button onclick="start()">開始掃描</button>
+<button onclick="start()">啟動掃描</button>
 
-<div class="bar">
-    <div id="timebar" class="progress" style="width:0%"></div>
-</div>
+<div class="bar" id="progress"></div>
+<div id="list"></div>
 
-<div id="results"></div>
-
+<div class="log" id="log">
+<b>Signal Log</b><br><br>
 </div>
 
 <script>
 
-let symbols = []
-let dataStore = {}
-let timer
+let prices={}
+let alerted=new Set()
+let universe=[]
+let firstLoad=true
 
 async function start(){
-
-    document.getElementById("results").innerHTML=""
-
-    const tickers = await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr")
-        .then(r=>r.json())
-
-    // 只取成交量前100
-    symbols = tickers
-        .filter(t=>t.symbol.endsWith("USDT"))
-        .sort((a,b)=>b.quoteVolume-a.quoteVolume)
-        .slice(0,100)
-        .map(t=>t.symbol)
-
-    scan()
-
-    if(timer) clearInterval(timer)
-    timer = setInterval(()=>{
-        scan()
-    },30000)
-
-    progressBar()
+await loadUniverse()
+scan()
+setInterval(scan,30000)
+setInterval(progressBar,1000)
 }
 
 function progressBar(){
-    let bar = document.getElementById("timebar")
-    let percent = 0
-    bar.style.width="0%"
-    let interval = setInterval(()=>{
-        percent+=3.33
-        bar.style.width=percent+"%"
-        if(percent>=100){
-            clearInterval(interval)
-            progressBar()
-        }
-    },1000)
+let now=new Date().getSeconds()
+document.getElementById("progress").style.width=(now/60*100)+"%"
+}
+
+async function loadUniverse(){
+let res=await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr")
+let data=await res.json()
+
+// 前400隻
+universe=data
+.filter(d=>d.symbol.endsWith("USDT"))
+.sort((a,b)=>b.quoteVolume-a.quoteVolume)
+.slice(0,400)
+.map(d=>d.symbol)
+
+connectWS()
+}
+
+function connectWS(){
+let ws=new WebSocket("wss://fstream.binance.com/ws/!ticker@arr")
+ws.onmessage=(e)=>{
+let arr=JSON.parse(e.data)
+arr.forEach(t=>{
+if(universe.includes(t.s)){
+prices[t.s]=parseFloat(t.c)
+}
+})
+}
 }
 
 async function scan(){
 
-    const margin = parseFloat(document.getElementById("margin").value)
-    const leverage = parseFloat(document.getElementById("leverage").value)
-    const capital = margin*leverage
+let margin=parseFloat(document.getElementById("margin").value)
+let leverage=parseFloat(document.getElementById("leverage").value)
 
-    let results=[]
+let result=[]
 
-    for(let s of symbols){
+for(let symbol of universe.slice(0,100)){
 
-        const k = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=50`)
-            .then(r=>r.json())
+let k=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=50`).then(r=>r.json())
 
-        if(!k || k.length<30) continue
+let closes=k.map(x=>parseFloat(x[4]))
+let highs=k.map(x=>parseFloat(x[2]))
+let lows=k.map(x=>parseFloat(x[3]))
+let volumes=k.map(x=>parseFloat(x[5]))
 
-        const closes = k.map(x=>parseFloat(x[4]))
-        const highs = k.map(x=>parseFloat(x[2]))
-        const lows = k.map(x=>parseFloat(x[3]))
+let price=prices[symbol] || closes[closes.length-1]
 
-        const entry = closes[closes.length-1]
+let ema20=avg(closes.slice(-20))
+let ema50=avg(closes.slice(-50))
 
-        // 結構止損 = 最近10根最低
-        const stop = Math.min(...lows.slice(-10))
+let trend=ema20>ema50
 
-        const risk = entry-stop
-        if(risk<=0) continue
+let breakout=price>Math.max(...highs.slice(-20))
 
-        // ATR(20)
-        let ranges=[]
-        for(let i=1;i<k.length;i++){
-            ranges.push(highs[i]-lows[i])
-        }
-        const atr = ranges.slice(-20).reduce((a,b)=>a+b)/20
+let atr=avg(highs.map((h,i)=>h-lows[i]))
 
-        // 固定 ATR x2
-        const tp = entry + atr*2
+let stop=Math.min(...lows.slice(-5))
+let risk=price-stop
 
-        const qty = capital/entry
-        const maxProfit = (tp-entry)*qty
-        const profitRate = (maxProfit/margin)*100
+if(risk<=0)continue
 
-        const stormRatio = (tp-entry)/risk
+let tp1=price+1.5*risk
+let tp2=price+3*risk
+let tp3=price+2.5*atr
 
-        // 評分系統
-        let score=0
-        if(stormRatio>2) score+=25
-        if(profitRate>20) score+=25
-        if(atr/entry>0.01) score+=25
-        if(entry>stop) score+=25
+let reward=tp2-price
+let storm=reward/risk
 
-        results.push({
-            symbol:s,
-            entry,
-            stop,
-            tp,
-            stormRatio,
-            profitRate,
-            score
-        })
-    }
+let maxReturn=((tp2-price)/price)*leverage*100
 
-    results.sort((a,b)=>b.score-a.score)
-    render(results.slice(0,15))
+let volumeSpike=volumes[volumes.length-1] > avg(volumes.slice(-20))*1.5
+
+let score=0
+if(trend)score+=20
+if(breakout)score+=20
+if(volumeSpike)score+=20
+if(storm>=2.5)score+=20
+if(price>ema20)score+=20
+
+if(score>=80){
+
+let position=margin*leverage
+
+result.push({
+symbol,
+score,
+price,
+stop,
+tp1,
+tp2,
+tp3,
+storm,
+maxReturn,
+position,
+margin
+})
+
+if(!alerted.has(symbol)){
+logSignal(symbol,score)
+alerted.add(symbol)
 }
 
-function render(list){
+}
 
-    const box=document.getElementById("results")
-    box.innerHTML=""
+}
 
-    for(let d of list){
+render(result.sort((a,b)=>b.score-a.score))
+}
 
-        box.innerHTML+=`
-        <div class="card">
-            <b>${d.symbol}</b> | Score: ${d.score}
-            <div>Entry: ${d.entry.toFixed(4)}</div>
-            <div>Stop: ${d.stop.toFixed(4)}</div>
-            <div>TP (2xATR): ${d.tp.toFixed(4)}</div>
-            <div>Storm比: ${d.stormRatio.toFixed(2)}</div>
-            <div>最大收益率: ${d.profitRate.toFixed(2)}%</div>
-        </div>
-        `
-    }
+function render(data){
+let html=""
+data.forEach(d=>{
+html+=`
+<div class="card">
+<b>${d.symbol}</b> | 評分: ${d.score}<br><br>
+Entry: ${d.price.toFixed(4)}<br>
+Stop: ${d.stop.toFixed(4)}<br>
+TP1: ${d.tp1.toFixed(4)}<br>
+TP2: ${d.tp2.toFixed(4)}<br>
+TP3: ${d.tp3.toFixed(4)}<br>
+Storm比: ${d.storm.toFixed(2)}<br>
+最大收益率: ${d.maxReturn.toFixed(2)}%<br>
+可開倉位: ${d.position.toFixed(2)}<br>
+保證金: ${d.margin}<br>
+</div>
+`
+})
+document.getElementById("list").innerHTML=html
+}
+
+function logSignal(s,score){
+let log=document.getElementById("log")
+log.innerHTML+="🔥 STRONG ENTRY "+s+" 分數:"+score+"<br>"
+}
+
+function avg(arr){
+return arr.reduce((a,b)=>a+b,0)/arr.length
 }
 
 </script>
