@@ -2,23 +2,47 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>TRIDENT V53 PRE BREAKOUT</title>
+<title>TRIDENT V56 PRO</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 body{background:#000;color:#fff;font-family:monospace}
-.card{background:#111;border:1px solid #222;padding:12px;margin-bottom:10px}
+.card{background:#111;border:1px solid #222;padding:12px;margin-bottom:12px}
 .bar{height:6px;background:#222;margin-top:6px}
 .fill{height:6px;background:#00ff88}
-.log{background:#111;border:1px solid #333;height:260px;overflow:auto;padding:10px}
+.log{background:#111;border:1px solid #333;height:240px;overflow:auto;padding:10px}
+.small{font-size:12px;color:#aaa}
+input{background:#111;border:1px solid #333;padding:4px;color:#fff;width:100%}
 </style>
 </head>
 <body class="p-6">
 
-<h1 class="text-xl mb-4">TRIDENT V53 – PRE BREAKOUT</h1>
-<button onclick="ignite()" class="bg-green-600 px-4 py-2 mb-4">啟動掃描</button>
+<h1 class="text-xl mb-4">TRIDENT V56 – PRO RISK ENGINE</h1>
+
+<div class="flex gap-4 mb-4">
+
+<div>
+<div class="small">帳戶資金</div>
+<input type="number" id="accountInput" value="10000">
+</div>
+
+<div>
+<div class="small">風險 %</div>
+<input type="number" id="riskInput" value="1" step="0.1">
+</div>
+
+<div>
+<div class="small">槓桿</div>
+<input type="number" id="leverageInput" value="5">
+</div>
+
+<button onclick="ignite()" class="bg-green-600 px-4 py-2 mt-5">
+啟動
+</button>
+
+</div>
 
 <div class="bar mb-4">
-<div id="progress" class="fill" style="width:0%"></div>
+<div id="progressFill" class="fill" style="width:0%"></div>
 </div>
 
 <div class="flex gap-6">
@@ -30,18 +54,14 @@ body{background:#000;color:#fff;font-family:monospace}
 
 <script>
 
-const INITIAL_LOAD = 400
-const ACTIVE_LIMIT = 100
-const DISPLAY_LIMIT = 10
-const REFRESH_INTERVAL = 30000
+const REFRESH_INTERVAL=30000
+const DISPLAY_LIMIT=8
 
 let universe=[]
 let active=[]
 let market={}
 let alerted=new Set()
-let ws
-
-const EXCLUDE=["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT","ADAUSDT"]
+let elapsed=0
 
 // ===== 啟動 =====
 
@@ -52,144 +72,116 @@ startWS()
 startTimer()
 }
 
-// ===== 建立幣池 =====
+// ===== 幣池 =====
 
 async function loadUniverse(){
-
 const tickers=await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr")
 .then(r=>r.json())
 
 universe=tickers
 .filter(t=>t.symbol.endsWith("USDT"))
-.filter(t=>!EXCLUDE.includes(t.symbol))
 .sort((a,b)=>b.quoteVolume-a.quoteVolume)
-.slice(30,430) // 排除前段
+.slice(30,200)
 .map(t=>t.symbol)
-
 }
 
-// ===== 初始化100隻 =====
-
 async function initActive(){
-
-active=universe.slice(0,ACTIVE_LIMIT)
-
+active=universe.slice(0,100)
 for(const s of active){
 await loadSymbol(s)
 }
-
 render()
 }
 
-// ===== 抓完整策略數據 =====
+// ===== 讀數據 =====
 
 async function loadSymbol(s){
 
-const [k,oi15,oi1h,funding]=await Promise.all([
-fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=50`).then(r=>r.json()),
-fetch(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${s}&period=15m&limit=2`).then(r=>r.json()),
-fetch(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${s}&period=1h&limit=2`).then(r=>r.json()),
-fetch(`https://fapi.binance.com/fapi/v1/fundingRate?symbol=${s}&limit=1`).then(r=>r.json())
-])
+const k=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=50`)
+.then(r=>r.json())
 
 const closes=k.map(x=>parseFloat(x[4]))
-const vols=k.map(x=>parseFloat(x[5]))
-
-const high=Math.max(...closes)
-const low=Math.min(...closes)
+const lows=k.map(x=>parseFloat(x[3]))
 const price=closes.at(-1)
 
-const slope=(price-closes[0])/closes[0]*100
-const avgVol=vols.reduce((a,b)=>a+b)/vols.length
-const volRatio=vols.at(-1)/avgVol
-
-const oi15delta=calcDelta(oi15)
-const oi1hdelta=calcDelta(oi1h)
-
-const fundingRate=parseFloat(funding[0]?.fundingRate||0)
-
 market[s]={
-price,high,low,slope,volRatio,
-oi15:oi15delta,
-oi1h:oi1hdelta,
-funding:fundingRate,
-score:0
-}
-
-calcScore(s)
-}
-
-function calcDelta(data){
-if(!data||data.length<2) return 0
-return (parseFloat(data[1].sumOpenInterest)
--parseFloat(data[0].sumOpenInterest))
-/parseFloat(data[0].sumOpenInterest)*100
-}
-
-// ===== 爆發評分 =====
-
-function calcScore(s){
-
-const d=market[s]
-let score=0
-
-// 1 接近突破
-if(d.price>d.high*0.985) score+=20
-
-// 2 動能剛起
-if(d.slope>1.5 && d.slope<6) score+=20
-
-// 3 成交量放大
-if(d.volRatio>1.8) score+=20
-
-// 4 OI 同步增
-if(d.oi15>0.5 && d.oi1h>0.5) score+=20
-
-// 5 Funding 正常
-if(Math.abs(d.funding)<0.01) score+=20
-
-d.score=score
-
-if(score==100 && !alerted.has(s)){
-log("🚀 BREAKOUT READY "+s+" 100")
-alerted.add(s)
+price,
+high:Math.max(...closes),
+structureLow:Math.min(...lows.slice(-10)),
+score:80
 }
 }
 
-// ===== WebSocket 只更新價格 =====
+// ===== 計算交易 =====
+
+function computeTrade(d){
+
+const account=parseFloat(accountInput.value)
+const riskPercent=parseFloat(riskInput.value)
+const leverage=parseFloat(leverageInput.value)
+
+const entry=d.price
+const stop=d.structureLow
+const risk=entry-stop
+if(risk<=0) return null
+
+const tp=entry+risk*2
+const rr=2
+
+const riskCapital=account*(riskPercent/100)
+const rawPosition=riskCapital/risk
+const positionSize=rawPosition*leverage
+const marginUsed=(positionSize*entry)/leverage
+
+// ===== 動態移動止損 =====
+
+let trailingStop=stop
+
+if(d.price>=entry+risk){
+trailingStop=entry
+}
+if(d.price>=entry+risk*2){
+trailingStop=entry+risk
+}
+
+return {
+entry,stop,trailingStop,tp,
+rr,positionSize,marginUsed
+}
+}
+
+// ===== WebSocket =====
 
 function startWS(){
-
-ws=new WebSocket("wss://fstream.binance.com/ws/!ticker@arr")
+const ws=new WebSocket("wss://fstream.binance.com/ws/!ticker@arr")
 
 ws.onmessage=e=>{
 const arr=JSON.parse(e.data)
 arr.forEach(t=>{
 if(market[t.s]){
 market[t.s].price=parseFloat(t.c)
-calcScore(t.s)
 }
 })
-render()
 }
 }
 
-// ===== 30秒重算 =====
+// ===== 固定進度條 =====
 
 function startTimer(){
 
-let elapsed=0
-
 setInterval(()=>{
+
 elapsed+=100
-document.getElementById("progress").style.width=
-(elapsed/REFRESH_INTERVAL*100)+"%"
 
 if(elapsed>=REFRESH_INTERVAL){
 elapsed=0
-active.forEach(s=>calcScore(s))
-render()
 }
+
+progressFill.style.width=
+(elapsed/REFRESH_INTERVAL*100)+"%"
+
+render()
+
 },100)
 
 }
@@ -198,33 +190,35 @@ render()
 
 function render(){
 
-const container=document.getElementById("list")
-container.innerHTML=""
+list.innerHTML=""
 
-active
-.sort((a,b)=>market[b].score-market[a].score)
-.slice(0,DISPLAY_LIMIT)
-.forEach(s=>{
+active.slice(0,DISPLAY_LIMIT).forEach(s=>{
+
 const d=market[s]
+if(!d) return
+
+const trade=computeTrade(d)
+if(!trade) return
+
 const card=document.createElement("div")
 card.className="card"
+
 card.innerHTML=`
-<div class="flex justify-between">
 <div>${s}</div>
-<div>${d.score}</div>
-</div>
-<div class="bar">
-<div class="fill" style="width:${d.score}%"></div>
+<div class="small">
+Entry: ${trade.entry.toFixed(4)}<br>
+Stop: ${trade.stop.toFixed(4)}<br>
+Trailing SL: ${trade.trailingStop.toFixed(4)}<br>
+TP: ${trade.tp.toFixed(4)}<br>
+槓桿後倉位: ${trade.positionSize.toFixed(2)}<br>
+保證金: ${trade.marginUsed.toFixed(2)}
 </div>
 `
-container.appendChild(card)
-})
-}
 
-function log(text){
-const div=document.createElement("div")
-div.innerText=text
-document.getElementById("log").prepend(div)
+list.appendChild(card)
+
+})
+
 }
 
 </script>
