@@ -2,40 +2,86 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>POC 4H Scanner PRO</title>
+<title>POC Breakout Scanner PRO</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-body{background:#050505;color:#e5e7eb;font-family:monospace}
-.card{background:#111;border:1px solid #222}
-.low{border:2px solid #22c55e}
-.mid{border:2px solid #eab308}
-.pre{border:2px solid #3b82f6}
-.bar{height:4px;background:#22c55e;width:0%}
+
+body{
+background: radial-gradient(circle at top,#0b0f1a,#000);
+color:#e5e7eb;
+font-family:monospace;
+overflow:hidden;
+}
+
+.card{
+background: linear-gradient(145deg,#111,#0a0a0a);
+border:1px solid #1f2937;
+transition: all .3s ease;
+box-shadow:0 0 10px rgba(0,0,0,.5);
+animation: fadeIn .5s ease forwards;
+}
+
+.card:hover{
+transform: translateY(-4px);
+box-shadow:0 0 20px rgba(59,130,246,.5);
+}
+
+.breakout{
+border:1px solid #3b82f6;
+box-shadow:0 0 15px rgba(59,130,246,.6);
+}
+
+.low{
+border:1px solid #22c55e;
+box-shadow:0 0 20px rgba(34,197,94,.8);
+animation: pulse 2s infinite;
+}
+
+@keyframes pulse{
+0%{box-shadow:0 0 10px rgba(34,197,94,.4)}
+50%{box-shadow:0 0 30px rgba(34,197,94,1)}
+100%{box-shadow:0 0 10px rgba(34,197,94,.4)}
+}
+
+@keyframes fadeIn{
+from{opacity:0;transform:translateY(10px)}
+to{opacity:1;transform:translateY(0)}
+}
+
+.bar{
+height:4px;
+background:linear-gradient(90deg,#22c55e,#3b82f6);
+width:0%;
+transition:width .1s linear;
+}
+
 </style>
 </head>
+
 <body class="p-4">
 
-<div class="flex justify-between items-center mb-3">
-<button id="toggleBtn" onclick="toggleRun()" class="bg-green-600 px-4 py-2">開始</button>
-<input id="searchInput" placeholder="搜尋幣兌..." class="bg-black border border-gray-700 px-3 py-1">
-<div class="w-64 bg-gray-800"><div id="progressBar" class="bar"></div></div>
+<div class="flex justify-between items-center mb-4">
+<button onclick="toggleRun()" id="toggleBtn"
+class="bg-green-600 px-5 py-2 rounded shadow hover:bg-green-500 transition">
+開始
+</button>
+
+<div class="w-64 bg-gray-800 rounded">
+<div id="progressBar" class="bar"></div>
+</div>
 </div>
 
-<div class="flex gap-4">
-<div id="list" class="grid grid-cols-4 gap-3 flex-1 overflow-auto h-[80vh]"></div>
-<div class="w-80 border border-gray-700 p-2">
-<h2 class="text-green-400 mb-2">低風險紀錄</h2>
-<div id="log"></div>
-</div>
+<div id="list"
+class="grid grid-cols-4 gap-4 overflow-auto h-[85vh] pr-2">
 </div>
 
 <script>
-const EXCLUDE_TOP35_COUNT = 35
+
 let running=false
 let interval
 let symbols=[]
 let market={}
-let pinned=new Set()
+const EXCLUDE_TOP=35
 
 function toggleRun(){
 running=!running
@@ -46,6 +92,7 @@ if(running){start()}else{clearInterval(interval)}
 async function start(){
 await loadSymbols()
 await refresh()
+
 let t=0
 interval=setInterval(async()=>{
 t+=100
@@ -64,43 +111,43 @@ const data=await res.json()
 symbols=data
 .filter(x=>x.symbol.endsWith('USDT'))
 .sort((a,b)=>b.quoteVolume-a.quoteVolume)
-.slice(EXCLUDE_TOP35_COUNT,200) // 排除前35
+.slice(EXCLUDE_TOP,200)
 .map(x=>x.symbol)
 }
 
 async function refresh(){
+market={}
 for(let s of symbols){
 await processSymbol(s)
-await new Promise(r=>setTimeout(r,50))
+await new Promise(r=>setTimeout(r,40))
 }
 render()
 }
 
 async function processSymbol(s){
 try{
+
 const [k15,k4]=await Promise.all([
 fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=120`).then(r=>r.json()),
 fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=4h&limit=120`).then(r=>r.json())
 ])
 
-let poc4h=calcPOC(k4)
 let poc15=calcPOC(k15)
+let poc4=calcPOC(k4)
+
 let last=parseFloat(k15[k15.length-1][4])
 let vol=parseFloat(k15[k15.length-1][5])
 let avgVol=k15.slice(-20).reduce((a,b)=>a+parseFloat(b[5]),0)/20
 
-let ma7=ma(k15,7)
-let ma25=ma(k15,25)
-let ma99=ma(k15,99)
-
 let breakout = last>poc15 && vol>avgVol*1.5
 
-let risk='none'
-if(breakout) risk='pre'
-if(breakout && near(last,poc15)) risk='mid'
-if(breakout && near(last,poc15) && near(last,ma99)) risk='low'
+if(!breakout) return
 
-market[s]={last,poc4h,poc15,ma7,ma25,ma99,risk}
+let risk='breakout'
+
+if(Math.abs(last-poc15)/poc15<0.003) risk='low'
+
+market[s]={last,poc15,poc4,risk}
 
 }catch(e){}
 }
@@ -111,81 +158,57 @@ let prices=k.map(x=>parseFloat(x[4]))
 let min=Math.min(...prices)
 let max=Math.max(...prices)
 let step=(max-min)/20||0.00001
+
 k.forEach(c=>{
 let p=parseFloat(c[4])
 let v=parseFloat(c[5])
 let b=Math.floor((p-min)/step)
 bins[b]=(bins[b]||0)+v
 })
+
 let maxV=0,index=0
 for(let i in bins){
-if(bins[i]>maxV){maxV=bins[i];index=i}
+if(bins[i]>maxV){
+maxV=bins[i]
+index=i
 }
+}
+
 return min+index*step
-}
-
-function ma(k,n){
-let arr=k.slice(-n).map(x=>parseFloat(x[4]))
-return arr.reduce((a,b)=>a+b,0)/arr.length
-}
-
-function near(a,b){
-return Math.abs(a-b)/b<0.005
 }
 
 function render(){
 let container=document.getElementById('list')
 container.innerHTML=''
+
 Object.keys(market).forEach(s=>{
 let d=market[s]
-if(!d) return
+
 let div=document.createElement('div')
-div.className='card p-2 '+(d.risk==='low'?'low':d.risk==='mid'?'mid':d.risk==='pre'?'pre':'')
+div.className='card p-3 '+(d.risk==='low'?'low':'breakout')
+
 div.innerHTML=`
-<div class="flex justify-between">
+<div class="flex justify-between text-lg font-bold">
 <span>${s.replace('USDT','')}</span>
-<button onclick="pin('${s}')">${pinned.has(s)?'取消':'標記'}</button>
+<span class="${d.risk==='low'?'text-green-400':'text-blue-400'}">
+${d.risk==='low'?'低風險突破':'突破POC'}
+</span>
 </div>
-<div>價: ${d.last.toFixed(4)}</div>
-<div>4H POC: ${d.poc4h.toFixed(4)}</div>
-<div>15M POC: ${d.poc15.toFixed(4)}</div>
-<div>MA7:${d.ma7.toFixed(4)}</div>
-<div>MA25:${d.ma25.toFixed(4)}</div>
-<div>MA99:${d.ma99.toFixed(4)}</div>
-<div class="mt-1">${label(d.risk)}</div>
+<div class="mt-2 text-sm text-gray-400">
+現價: ${d.last.toFixed(4)}
+</div>
+<div class="text-sm">
+15M POC: ${d.poc15.toFixed(4)}
+</div>
+<div class="text-sm">
+4H POC: ${d.poc4.toFixed(4)}
+</div>
 `
+
 container.appendChild(div)
-
-if(d.risk==='low'){
-let log=document.getElementById('log')
-let item=document.createElement('div')
-item.innerText=`${s} 低風險進場`
-log.prepend(item)
-}
 })
 }
 
-function label(r){
-if(r==='low') return '低風險進場'
-if(r==='mid') return '中風險進場'
-if(r==='pre') return '預備進場'
-return ''
-}
-
-function pin(s){
-if(pinned.has(s)) pinned.delete(s)
-else pinned.add(s)
-render()
-}
-
-document.getElementById('searchInput').addEventListener('keydown',e=>{
-if(e.key==='Enter'){
-let s=e.target.value.toUpperCase()
-if(!s.endsWith('USDT')) s+='USDT'
-symbols.unshift(s)
-e.target.value=''
-}
-})
 </script>
 
 </body>
