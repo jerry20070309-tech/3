@@ -2,249 +2,182 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>POC BREAKOUT MONITOR</title>
+<title>TRIDENT POC PRO A</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-body{
-    background:#050505;
-    font-family: 'JetBrains Mono', monospace;
-    overflow:hidden;
-}
-.card{
-    background:rgba(20,20,25,0.7);
-    backdrop-filter: blur(12px);
-    border:1px solid #1f1f23;
-    transition: all .3s ease;
-}
-.card:hover{
-    transform:translateY(-4px);
-    box-shadow:0 0 25px rgba(59,130,246,.3);
-}
-.breakout{
-    box-shadow:0 0 25px rgba(34,197,94,.7);
-    border:1px solid #22c55e;
-}
-.lowrisk{
-    border:1px solid gold !important;
-    box-shadow:0 0 30px rgba(255,215,0,.6);
-}
-.midrisk{
-    border:1px solid orange !important;
-}
-.pulse{
-    animation:pulseGlow 1.2s infinite;
-}
-@keyframes pulseGlow{
-    0%{box-shadow:0 0 8px #22c55e;}
-    50%{box-shadow:0 0 25px #22c55e;}
-    100%{box-shadow:0 0 8px #22c55e;}
-}
-.refresh-bar{
-    height:4px;
-    background:#3b82f6;
-    width:0%;
-}
+body{background:#050505;color:#d4d4d8;font-family:monospace}
+.card{background:#0f0f11;border:1px solid #1f1f23}
+.low{border:2px solid #22c55e}
+.mid{border:2px solid #f59e0b}
+.pre{border:2px solid #3b82f6}
+.bar{height:3px;background:#3b82f6;width:0%}
 </style>
 </head>
-<body class="p-4 h-screen flex flex-col text-gray-200">
+<body class="p-4">
 
-<header class="flex justify-between items-center mb-3">
-<div class="flex gap-4 items-center">
-<button id="toggleBtn" onclick="toggleRun()" 
-class="bg-green-600 px-4 py-2 rounded font-bold">開啟</button>
-
-<input id="searchInput" 
-placeholder="搜尋幣對..." 
-class="bg-black border border-zinc-700 px-3 py-1 rounded text-sm"
-onkeydown="handleSearch(event)">
+<div class="flex justify-between mb-4">
+<div class="flex gap-3">
+<button id="toggleBtn" onclick="toggleRun()" class="bg-blue-600 px-4 py-2 rounded">啟動</button>
+<input id="searchInput" placeholder="搜尋幣..." class="bg-black border px-2 py-1"/>
+</div>
+<div class="w-64 bg-zinc-800 rounded">
+<div id="progressBar" class="bar"></div>
+</div>
 </div>
 
-<div class="w-64 bg-zinc-800 rounded overflow-hidden">
-<div id="refreshBar" class="refresh-bar"></div>
+<div class="flex gap-4">
+<div id="list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 flex-1"></div>
+<div class="w-72 bg-black border p-3">
+<h3 class="text-green-400 mb-2">低風險紀錄</h3>
+<div id="log"></div>
 </div>
-</header>
-
-<main class="flex flex-1 overflow-hidden gap-4">
-<div id="cards" 
-class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto flex-1 pr-2">
 </div>
-
-<div class="w-72 border border-zinc-800 rounded p-3 bg-black/40 flex flex-col">
-<h2 class="text-green-400 font-bold mb-2">低風險紀錄</h2>
-<div id="lowRiskLog" class="overflow-y-auto text-sm flex-1"></div>
-</div>
-</main>
 
 <script>
+const EXCLUDE = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','ADAUSDT'];
+
+let symbols=[];
+let dataMap={};
 let running=false;
-let refreshTimer=null;
-let progress=0;
-let marketData={};
-let lowRiskLogged=new Set();
-let pinned=new Set(JSON.parse(localStorage.getItem("pinned")||"[]"));
+let ws=null;
+let firstLoad=true;
+let pinned=new Set();
 
-const EXCLUDE_TOP35=[
-'BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT',
-'DOGEUSDT','TRXUSDT','AVAXUSDT','DOTUSDT','MATICUSDT',
-'LINKUSDT','TONUSDT','SHIBUSDT','BCHUSDT','LTCUSDT',
-'NEARUSDT','ICPUSDT','APTUSDT','FILUSDT','ATOMUSDT',
-'ETCUSDT','OPUSDT','ARBUSDT','IMXUSDT','INJUSDT',
-'XLMUSDT','HBARUSDT','STXUSDT','SUIUSDT','TIAUSDT',
-'PEPEUSDT','KASUSDT','RNDRUSDT','MKRUSDT'
-];
-
-function toggleRun(){
+async function toggleRun(){
 running=!running;
-document.getElementById("toggleBtn").innerText=running?"停止":"開啟";
-document.getElementById("toggleBtn").className=
-running?"bg-red-600 px-4 py-2 rounded font-bold":
-"bg-green-600 px-4 py-2 rounded font-bold";
-
+document.getElementById('toggleBtn').innerText=running?'停止':'啟動';
 if(running){
-refreshAll();
-refreshTimer=setInterval(refreshAll,30000);
-setInterval(updateBar,100);
+await init();
+startTimer();
 }else{
-clearInterval(refreshTimer);
+if(ws)ws.close();
 }
 }
 
-function updateBar(){
-if(!running) return;
-progress+=100;
-if(progress>=30000) progress=0;
-document.getElementById("refreshBar").style.width=
-(progress/30000*100)+"%";
-}
-
-async function refreshAll(){
-progress=0;
-const tickers=await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr")
-.then(r=>r.json());
-
-const targets=tickers
-.filter(t=>t.symbol.endsWith("USDT")
-&&!EXCLUDE_TOP35.includes(t.symbol))
+async function init(){
+const res=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
+const tickers=await res.json();
+symbols=tickers
+.filter(t=>t.symbol.endsWith('USDT')&&!EXCLUDE.includes(t.symbol))
 .sort((a,b)=>b.quoteVolume-a.quoteVolume)
-.slice(0,400);
+.slice(0,400)
+.map(t=>t.symbol);
 
-for(let t of targets){
-await analyzeSymbol(t.symbol);
-await new Promise(r=>setTimeout(r,80));
+await loadBatch(symbols);
+startWS();
+firstLoad=false;
+}
+
+async function loadBatch(batch){
+for(let s of batch){
+await loadSymbol(s);
 }
 }
 
-async function analyzeSymbol(s){
+async function loadSymbol(s){
 try{
-const k15=await fetch(
-`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=120`)
-.then(r=>r.json());
+const k4=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=4h&limit=100`).then(r=>r.json());
+const k15=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=100`).then(r=>r.json());
 
-const k4h=await fetch(
-`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=4h&limit=120`)
-.then(r=>r.json());
+const poc4=calcPOC(k4);
+const poc15=calcPOC(k15);
 
-const poc4h=calcPOC(k4h);
 const ma7=ma(k15,7);
 const ma25=ma(k15,25);
 const ma99=ma(k15,99);
 
-const last=k15[k15.length-1];
-const price=parseFloat(last[4]);
-const vol=parseFloat(last[5]);
-const avgVol=k15.reduce((a,b)=>a+parseFloat(b[5]),0)/k15.length;
-
-const breakout=price>poc4h && vol>avgVol*1.8;
-
-if(!breakout) return;
-
-let risk="";
-if(Math.abs(price-poc4h)/price<0.002 
-&& Math.abs(price-ma99)/price<0.002){
-risk="low";
-}else if(Math.abs(price-poc4h)/price<0.002
-|| Math.abs(price-ma99)/price<0.002){
-risk="mid";
-}
-
-renderCard(s,price,poc4h,ma7,ma25,ma99,risk);
-
-}catch(e){}
+dataMap[s]={poc4,poc15,ma7,ma25,ma99};
+}catch{}
 }
 
 function calcPOC(k){
 let bins={};
-let min=Math.min(...k.map(x=>parseFloat(x[3])));
-let max=Math.max(...k.map(x=>parseFloat(x[2])));
-let step=(max-min)/30||0.00001;
-
-k.forEach(x=>{
-let p=parseFloat(x[4]);
-let v=parseFloat(x[5]);
-let bin=Math.floor((p-min)/step)*step+min;
-bins[bin]=(bins[bin]||0)+v;
+k.forEach(c=>{
+let p=parseFloat(c[4]);
+let v=parseFloat(c[5]);
+let b=Math.round(p*100)/100;
+bins[b]=(bins[b]||0)+v;
 });
-return parseFloat(
-Object.keys(bins).reduce((a,b)=>
-bins[a]>bins[b]?a:b)
-);
+let max=0,price=0;
+for(let b in bins){
+if(bins[b]>max){max=bins[b];price=parseFloat(b);}
+}
+return price;
 }
 
-function ma(k,len){
-let slice=k.slice(-len);
-return slice.reduce((a,b)=>a+parseFloat(b[4]),0)/len;
+function ma(k,n){
+let closes=k.map(x=>parseFloat(x[4]));
+let slice=closes.slice(-n);
+return slice.reduce((a,b)=>a+b,0)/n;
 }
 
-function renderCard(s,p,poc,ma7,ma25,ma99,risk){
-let el=document.getElementById("card-"+s);
+function startWS(){
+ws=new WebSocket('wss://fstream.binance.com/ws/!ticker@arr');
+ws.onmessage=e=>{
+let arr=JSON.parse(e.data);
+arr.forEach(m=>{
+if(!symbols.includes(m.s))return;
+checkSignal(m.s,parseFloat(m.c));
+});
+};
+}
+
+function checkSignal(s,price){
+let d=dataMap[s];
+if(!d)return;
+
+if(price>d.poc4){
+let type='pre';
+if(Math.abs(price-d.poc4)/d.poc4<0.002) type='mid';
+if(Math.abs(price-d.poc4)/d.poc4<0.001 && Math.abs(price-d.ma99)/d.ma99<0.002) type='low';
+renderCard(s,price,type);
+if(type==='low') logLow(s,price);
+}
+}
+
+function renderCard(s,price,type){
+let el=document.getElementById(s);
 if(!el){
-el=document.createElement("div");
-el.id="card-"+s;
-document.getElementById("cards").appendChild(el);
+el=document.createElement('div');
+el.id=s;
+document.getElementById('list').prepend(el);
 }
-
-el.className="card p-4 breakout pulse";
-
-if(risk==="low"){
-el.classList.add("lowrisk");
-if(!lowRiskLogged.has(s)){
-lowRiskLogged.add(s);
-let log=document.createElement("div");
-log.innerText=s+" 低風險";
-document.getElementById("lowRiskLog").prepend(log);
-}
-}else if(risk==="mid"){
-el.classList.add("midrisk");
-}
-
+el.className=`card p-3 rounded ${type}`;
 el.innerHTML=`
 <div class="flex justify-between">
-<span class="font-bold text-lg">${s.replace("USDT","")}</span>
-<button onclick="togglePin('${s}')" class="text-xs text-blue-400">標記</button>
+<b>${s.replace('USDT','')}</b>
+<button onclick="pin('${s}')">★</button>
 </div>
-<div class="text-sm mt-2">
-現價: ${p.toFixed(4)}<br>
-4H POC: ${poc.toFixed(4)}<br>
-MA7: ${ma7.toFixed(4)}<br>
-MA25: ${ma25.toFixed(4)}<br>
-MA99: ${ma99.toFixed(4)}
-</div>
+<div>價格: ${price}</div>
+<div>4H POC: ${dataMap[s].poc4}</div>
+<div>MA99: ${dataMap[s].ma99.toFixed(4)}</div>
 `;
 }
 
-function togglePin(s){
-if(pinned.has(s)) pinned.delete(s);
-else pinned.add(s);
-localStorage.setItem("pinned",JSON.stringify([...pinned]));
+function logLow(s,p){
+let log=document.getElementById('log');
+let div=document.createElement('div');
+div.innerText=`${s} 低風險 @ ${p}`;
+log.prepend(div);
 }
 
-function handleSearch(e){
-if(e.key==="Enter"){
-let val=e.target.value.toUpperCase();
-if(!val.endsWith("USDT")) val+="USDT";
-analyzeSymbol(val);
-e.target.value="";
+function pin(s){
+if(pinned.has(s)) pinned.delete(s);
+else pinned.add(s);
 }
+
+function startTimer(){
+let sec=30;
+setInterval(async()=>{
+if(!running)return;
+sec--;
+document.getElementById('progressBar').style.width=(sec/30*100)+'%';
+if(sec<=0){
+sec=30;
+let top100=symbols.slice(0,100);
+await loadBatch(top100);
+}
+},1000);
 }
 </script>
 </body>
