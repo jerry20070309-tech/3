@@ -2,53 +2,50 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>⚡ TRIDENT V42 | Sync Stable</title>
+<title>⚡ TRIDENT V42 ELITE</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&display=swap');
 body{background:#050505;color:#d4d4d8;font-family:'JetBrains Mono',monospace;overflow:hidden}
 .card-stat{background:#0f0f11;border:1px solid #1f1f23;transition:.3s}
-.liq-alert{border:2px solid #ef4444!important;background:#210808!important;animation:blink .8s infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.7}}
+.low-risk{border:2px solid #22c55e!important;background:#052e1c!important}
+.mid-risk{border:2px solid #f59e0b!important;background:#2e1f05!important}
+.pre-risk{border:2px solid #3b82f6!important;background:#06192e!important}
 .refresh-bar{height:2px;background:#3b82f6;width:0%}
 .win-gradient{background:linear-gradient(90deg,#ef4444 0%,#18181b 50%,#22c55e 100%);height:8px;border-radius:4px;position:relative}
-.pointer{width:4px;height:18px;background:#fff;position:absolute;top:-5px;box-shadow:0 0 12px #fff;transition:left .3s}
-.oi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:8px}
-.oi-item{background:#161618;padding:4px 0;border-radius:3px;font-size:9px;font-weight:bold;text-align:center}
+.pointer{width:4px;height:18px;background:#fff;position:absolute;top:-5px;box-shadow:0 0 12px #fff}
 </style>
 </head>
 
 <body class="p-6 h-screen flex flex-col">
 
 <header class="flex justify-between items-center border-b border-zinc-800 pb-4 mb-2">
-<div class="flex items-center gap-6">
 <h1 class="text-2xl font-black italic text-white tracking-tighter">
-TRIDENT <span class="text-blue-500">V42</span>
+TRIDENT <span class="text-blue-500">V42 ELITE</span>
 </h1>
-</div>
 
 <div class="flex items-center gap-6">
-<div class="text-right">
-<div class="text-[10px] text-blue-400 mb-1 font-bold uppercase tracking-widest">
-SAFE SYNC 30s
-</div>
+<input id="searchInput" placeholder="搜尋幣種..."
+class="bg-zinc-900 text-xs px-3 py-1 border border-zinc-700 rounded"
+onkeydown="handleSearch(event)">
+
 <div class="w-48 bg-zinc-800 rounded-full h-1 overflow-hidden">
 <div id="refreshProgress" class="refresh-bar"></div>
 </div>
-</div>
 
-<button id="startBtn" onclick="ignite()"
-class="bg-blue-700 hover:bg-blue-600 text-white px-6 py-2 font-black rounded text-xs uppercase shadow-lg transition-all">
-開啟監控
-</button>
+<button id="toggleBtn"
+class="bg-blue-700 px-6 py-2 text-xs font-black rounded"
+onclick="toggleSystem()">開啟</button>
 </div>
 </header>
 
 <main class="flex flex-1 overflow-hidden gap-6">
-<div id="monitorList" class="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pr-2"></div>
+<div id="monitorList"
+class="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pr-2"></div>
+
 <div class="w-80 flex flex-col border border-zinc-800 rounded-lg bg-black/50">
-<div class="bg-zinc-900 p-3 text-[10px] font-black text-blue-400 border-b border-zinc-800 uppercase">
-Breaking POC Log
+<div class="bg-zinc-900 p-3 text-[10px] font-black text-emerald-400 border-b border-zinc-800 uppercase">
+Low Risk Log
 </div>
 <div id="logContent" class="flex-1 overflow-y-auto p-2"></div>
 </div>
@@ -56,36 +53,35 @@ Breaking POC Log
 
 <script>
 
-const EXCLUDE=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','ADAUSDT','XRPUSDT'];
-let marketData={}
-let loggedAlerts=new Set()
-let isRunning=false
-let ws=null
+const EXCLUDE=['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT']
 
-const SYNC_PERIOD=30000
+let marketData={}
+let pinned=new Set(JSON.parse(localStorage.getItem('pin'))||[])
+let running=false
+let ws=null
 let lastSync=0
+const SYNC=30000
+
+function toggleSystem(){
+running=!running
+document.getElementById('toggleBtn').innerText=running?'停止':'開啟'
+if(running){ignite()}
+else{if(ws)ws.close()}
+}
 
 async function ignite(){
-if(isRunning)return
-isRunning=true
-document.getElementById('startBtn').innerText="SAFE MONITORING"
-
 await refreshAllData()
 startWS()
 lastSync=Date.now()
-startProgressLoop()
+progressLoop()
 }
 
-function startProgressLoop(){
+function progressLoop(){
 setInterval(()=>{
-if(!isRunning)return
-
-let elapsed=Date.now()-lastSync
-let progress=(elapsed/SYNC_PERIOD)*100
-document.getElementById('refreshProgress').style.width=
-Math.min(progress,100)+'%'
-
-if(elapsed>=SYNC_PERIOD){
+if(!running)return
+let p=(Date.now()-lastSync)/SYNC*100
+document.getElementById('refreshProgress').style.width=Math.min(p,100)+'%'
+if(Date.now()-lastSync>=SYNC){
 lastSync=Date.now()
 refreshAllData()
 }
@@ -93,10 +89,7 @@ refreshAllData()
 }
 
 async function refreshAllData(){
-try{
-const tickers=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr')
-.then(r=>r.json())
-
+const tickers=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json())
 const targets=tickers
 .filter(t=>t.symbol.endsWith('USDT')&&!EXCLUDE.includes(t.symbol))
 .sort((a,b)=>b.quoteVolume-a.quoteVolume)
@@ -106,133 +99,104 @@ for(let t of targets){
 await initSymbol(t.symbol)
 await new Promise(r=>setTimeout(r,80))
 }
-
-}catch(e){console.warn("API busy")}
 }
 
 async function initSymbol(s){
-try{
-const [k,oi]=await Promise.all([
-fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=100`)
-.then(r=>r.json()),
-getOIStats(s)
+const [k15,k4]=await Promise.all([
+fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=100`).then(r=>r.json()),
+fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=4h&limit=100`).then(r=>r.json())
 ])
+
+let closes=k15.map(x=>parseFloat(x[4]))
+let ma=(n)=>closes.slice(-n).reduce((a,b)=>a+b)/n
 
 marketData[s]={
-poc:calculatePOC(k),
-avgVol:k.reduce((a,b)=>a+parseFloat(b[5]),0)/k.length,
-lastPrice:parseFloat(k[k.length-1][4]),
-oi:oi
+poc15:calcPOC(k15),
+poc4:calcPOC(k4),
+ma7:ma(7),
+ma25:ma(25),
+ma99:ma(99),
+last:closes[closes.length-1]
+}
 }
 
-}catch{}
-}
-
-function calculatePOC(klines){
+function calcPOC(k){
 let bins={}
-let prices=klines.map(k=>parseFloat(k[4]))
+let prices=k.map(x=>parseFloat(x[4]))
 let min=Math.min(...prices)
 let max=Math.max(...prices)
-let step=(max-min)/20
-if(step<=0)step=0.00001
-
-klines.forEach(k=>{
-let p=parseFloat(k[4])
-let v=parseFloat(k[5])
-let bin=Math.floor((p-min)/step)*step+min
-bins[bin]=(bins[bin]||0)+v
+let step=(max-min)/20||0.00001
+k.forEach(c=>{
+let p=parseFloat(c[4])
+let v=parseFloat(c[5])
+let b=Math.floor((p-min)/step)*step+min
+bins[b]=(bins[b]||0)+v
 })
-
 let poc=min,maxV=0
-for(let b in bins){
-if(bins[b]>maxV){maxV=bins[b];poc=parseFloat(b)}
-}
+for(let b in bins){if(bins[b]>maxV){maxV=bins[b];poc=parseFloat(b)}}
 return poc
-}
-
-async function getOIStats(s){
-const fetchOI=(p)=>
-fetch(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${s}&period=${p}&limit=2`)
-.then(r=>r.json())
-
-try{
-const [m5,m15,h1,h4]=await Promise.all([
-fetchOI('5m'),fetchOI('15m'),fetchOI('1h'),fetchOI('4h')
-])
-const calc=(d)=>
-(d&&d.length>1)?
-((parseFloat(d[1].sumOpenInterest)-
-parseFloat(d[0].sumOpenInterest))/
-parseFloat(d[0].sumOpenInterest)*100).toFixed(2):"0.00"
-
-return{m5:calc(m5),m15:calc(m15),h1:calc(h1),h4:calc(h4)}
-}catch{
-return{m5:"0.00",m15:"0.00",h1:"0.00",h4:"0.00"}
-}
 }
 
 function startWS(){
 ws=new WebSocket('wss://fstream.binance.com/ws/!ticker@arr')
 ws.onmessage=e=>{
 JSON.parse(e.data).forEach(m=>{
-let base=marketData[m.s]
-if(!base)return
+let d=marketData[m.s]
+if(!d)return
 
 let price=parseFloat(m.c)
-let volRatio=((parseFloat(m.q)/1440)*15)/base.avgVol
-let alert=(price<base.poc&&volRatio>2)
+if(price<=d.poc4)return  // 只顯示突破4H POC
 
-if(alert&&!loggedAlerts.has(m.s)){
-addLog(m.s,price,volRatio)
+let risk='pre-risk'
+if(Math.abs(price-d.ma99)/price<0.005 && Math.abs(price-d.poc15)/price<0.005){
+risk='low-risk'
+addLog(m.s,price)
+}
+else if(Math.abs(price-d.ma25)/price<0.005){
+risk='mid-risk'
 }
 
-updateUI(m.s,price,volRatio,alert,base)
+render(m.s,price,d,risk)
 })
 }
 }
 
-function updateUI(s,p,r,alert,data){
-let el=document.getElementById(`card-${s}`)
+function render(s,p,d,risk){
+let el=document.getElementById(s)
 if(!el){
 el=document.createElement('div')
-el.id=`card-${s}`
+el.id=s
 document.getElementById('monitorList').appendChild(el)
 }
-
-el.className=`card-stat p-4 rounded-lg ${alert?'liq-alert':''}`
+el.className=`card-stat p-4 rounded-lg ${risk}`
 
 el.innerHTML=`
-<div class="flex justify-between mb-2">
-<span class="text-white font-black italic">${s.replace('USDT','')}</span>
-<span class="${p>data.poc?'text-emerald-400':'text-red-500'} text-xs">
-${p>data.poc?'Above POC':'Below POC'}
-</span>
+<div class="flex justify-between">
+<span class="font-black">${s.replace('USDT','')}</span>
+<span>${risk.replace('-',' ')}</span>
 </div>
-
-<div class="win-gradient mb-4">
-<div class="pointer" style="left:${Math.min(95,Math.max(5,50+(r*10)))}%"></div>
-</div>
-
-<div class="oi-grid">
-<div class="oi-item">5M ${data.oi.m5}%</div>
-<div class="oi-item">15M ${data.oi.m15}%</div>
-<div class="oi-item">1H ${data.oi.h1}%</div>
-<div class="oi-item">4H ${data.oi.h4}%</div>
-</div>
-
-<div class="mt-3 text-[10px]">
-POC: <span class="text-blue-400">${data.poc.toFixed(4)}</span>
-Vol: ${r.toFixed(1)}x
+<div class="text-xs mt-2">
+4H POC: ${d.poc4.toFixed(4)}<br>
+15M POC: ${d.poc15.toFixed(4)}<br>
+MA7:${d.ma7.toFixed(4)} MA25:${d.ma25.toFixed(4)} MA99:${d.ma99.toFixed(4)}
 </div>
 `
 }
 
-function addLog(s,p,v){
-loggedAlerts.add(s)
+function addLog(s,p){
 let div=document.createElement('div')
-div.className="p-2 bg-red-950/20 border-l-2 border-red-600 mb-1 text-[11px]"
-div.innerHTML=`${s} 破位 ${p} | ${v.toFixed(1)}x`
+div.className="text-xs text-emerald-400 mb-1"
+div.innerText=`${s} 低風險回踩 ${p}`
 document.getElementById('logContent').prepend(div)
+}
+
+function handleSearch(e){
+if(e.key==='Enter'){
+let s=e.target.value.toUpperCase()
+if(!s.endsWith('USDT'))s+='USDT'
+initSymbol(s)
+e.target.value=''
+}
 }
 
 </script>
