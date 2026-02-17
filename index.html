@@ -12,8 +12,6 @@ body{background:#050505;color:#d4d4d8;font-family:'JetBrains Mono',monospace;ove
 .mid-risk{border:2px solid #f59e0b!important;background:#2e1f05!important}
 .pre-risk{border:2px solid #3b82f6!important;background:#06192e!important}
 .refresh-bar{height:2px;background:#3b82f6;width:0%}
-.win-gradient{background:linear-gradient(90deg,#ef4444 0%,#18181b 50%,#22c55e 100%);height:8px;border-radius:4px;position:relative}
-.pointer{width:4px;height:18px;background:#fff;position:absolute;top:-5px;box-shadow:0 0 12px #fff}
 </style>
 </head>
 
@@ -45,7 +43,7 @@ class="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-
 
 <div class="w-80 flex flex-col border border-zinc-800 rounded-lg bg-black/50">
 <div class="bg-zinc-900 p-3 text-[10px] font-black text-emerald-400 border-b border-zinc-800 uppercase">
-Low Risk Log
+低風險紀錄板
 </div>
 <div id="logContent" class="flex-1 overflow-y-auto p-2"></div>
 </div>
@@ -61,6 +59,7 @@ let running=false
 let ws=null
 let lastSync=0
 const SYNC=30000
+let alertedLowRisk=new Set()   // ⭐ 防重複報警
 
 function toggleSystem(){
 running=!running
@@ -145,23 +144,31 @@ let d=marketData[m.s]
 if(!d)return
 
 let price=parseFloat(m.c)
-if(price<=d.poc4)return  // 只顯示突破4H POC
+if(price<=d.poc4)return   // 只顯示突破4H POC
 
 let risk='pre-risk'
+let riskText='預備進場'
+
 if(Math.abs(price-d.ma99)/price<0.005 && Math.abs(price-d.poc15)/price<0.005){
 risk='low-risk'
+riskText='低風險進場'
+
+if(!alertedLowRisk.has(m.s)){   // ⭐ 不重複報警
+alertedLowRisk.add(m.s)
 addLog(m.s,price)
+}
 }
 else if(Math.abs(price-d.ma25)/price<0.005){
 risk='mid-risk'
+riskText='中風險進場'
 }
 
-render(m.s,price,d,risk)
+render(m.s,price,d,risk,riskText)
 })
 }
 }
 
-function render(s,p,d,risk){
+function render(s,p,d,risk,riskText){
 let el=document.getElementById(s)
 if(!el){
 el=document.createElement('div')
@@ -173,12 +180,14 @@ el.className=`card-stat p-4 rounded-lg ${risk}`
 el.innerHTML=`
 <div class="flex justify-between">
 <span class="font-black">${s.replace('USDT','')}</span>
-<span>${risk.replace('-',' ')}</span>
+<span>${riskText}</span>
 </div>
 <div class="text-xs mt-2">
-4H POC: ${d.poc4.toFixed(4)}<br>
-15M POC: ${d.poc15.toFixed(4)}<br>
-MA7:${d.ma7.toFixed(4)} MA25:${d.ma25.toFixed(4)} MA99:${d.ma99.toFixed(4)}
+四小時 POC：${d.poc4.toFixed(4)}<br>
+十五分鐘 POC：${d.poc15.toFixed(4)}<br>
+MA7：${d.ma7.toFixed(4)}<br>
+MA25：${d.ma25.toFixed(4)}<br>
+MA99：${d.ma99.toFixed(4)}
 </div>
 `
 }
@@ -186,7 +195,7 @@ MA7:${d.ma7.toFixed(4)} MA25:${d.ma25.toFixed(4)} MA99:${d.ma99.toFixed(4)}
 function addLog(s,p){
 let div=document.createElement('div')
 div.className="text-xs text-emerald-400 mb-1"
-div.innerText=`${s} 低風險回踩 ${p}`
+div.innerText=`${s} 觸發低風險進場 ${p}`
 document.getElementById('logContent').prepend(div)
 }
 
