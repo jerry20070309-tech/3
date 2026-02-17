@@ -2,183 +2,239 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>TRIDENT POC PRO A</title>
+<title>⚡ TRIDENT V42 | Sync Stable</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-body{background:#050505;color:#d4d4d8;font-family:monospace}
-.card{background:#0f0f11;border:1px solid #1f1f23}
-.low{border:2px solid #22c55e}
-.mid{border:2px solid #f59e0b}
-.pre{border:2px solid #3b82f6}
-.bar{height:3px;background:#3b82f6;width:0%}
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&display=swap');
+body{background:#050505;color:#d4d4d8;font-family:'JetBrains Mono',monospace;overflow:hidden}
+.card-stat{background:#0f0f11;border:1px solid #1f1f23;transition:.3s}
+.liq-alert{border:2px solid #ef4444!important;background:#210808!important;animation:blink .8s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.7}}
+.refresh-bar{height:2px;background:#3b82f6;width:0%}
+.win-gradient{background:linear-gradient(90deg,#ef4444 0%,#18181b 50%,#22c55e 100%);height:8px;border-radius:4px;position:relative}
+.pointer{width:4px;height:18px;background:#fff;position:absolute;top:-5px;box-shadow:0 0 12px #fff;transition:left .3s}
+.oi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:8px}
+.oi-item{background:#161618;padding:4px 0;border-radius:3px;font-size:9px;font-weight:bold;text-align:center}
 </style>
 </head>
-<body class="p-4">
 
-<div class="flex justify-between mb-4">
-<div class="flex gap-3">
-<button id="toggleBtn" onclick="toggleRun()" class="bg-blue-600 px-4 py-2 rounded">啟動</button>
-<input id="searchInput" placeholder="搜尋幣..." class="bg-black border px-2 py-1"/>
-</div>
-<div class="w-64 bg-zinc-800 rounded">
-<div id="progressBar" class="bar"></div>
-</div>
+<body class="p-6 h-screen flex flex-col">
+
+<header class="flex justify-between items-center border-b border-zinc-800 pb-4 mb-2">
+<div class="flex items-center gap-6">
+<h1 class="text-2xl font-black italic text-white tracking-tighter">
+TRIDENT <span class="text-blue-500">V42</span>
+</h1>
 </div>
 
-<div class="flex gap-4">
-<div id="list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 flex-1"></div>
-<div class="w-72 bg-black border p-3">
-<h3 class="text-green-400 mb-2">低風險紀錄</h3>
-<div id="log"></div>
+<div class="flex items-center gap-6">
+<div class="text-right">
+<div class="text-[10px] text-blue-400 mb-1 font-bold uppercase tracking-widest">
+SAFE SYNC 30s
+</div>
+<div class="w-48 bg-zinc-800 rounded-full h-1 overflow-hidden">
+<div id="refreshProgress" class="refresh-bar"></div>
 </div>
 </div>
+
+<button id="startBtn" onclick="ignite()"
+class="bg-blue-700 hover:bg-blue-600 text-white px-6 py-2 font-black rounded text-xs uppercase shadow-lg transition-all">
+開啟監控
+</button>
+</div>
+</header>
+
+<main class="flex flex-1 overflow-hidden gap-6">
+<div id="monitorList" class="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pr-2"></div>
+<div class="w-80 flex flex-col border border-zinc-800 rounded-lg bg-black/50">
+<div class="bg-zinc-900 p-3 text-[10px] font-black text-blue-400 border-b border-zinc-800 uppercase">
+Breaking POC Log
+</div>
+<div id="logContent" class="flex-1 overflow-y-auto p-2"></div>
+</div>
+</main>
 
 <script>
-const EXCLUDE = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','ADAUSDT'];
 
-let symbols=[];
-let dataMap={};
-let running=false;
-let ws=null;
-let firstLoad=true;
-let pinned=new Set();
+const EXCLUDE=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','ADAUSDT','XRPUSDT'];
+let marketData={}
+let loggedAlerts=new Set()
+let isRunning=false
+let ws=null
 
-async function toggleRun(){
-running=!running;
-document.getElementById('toggleBtn').innerText=running?'停止':'啟動';
-if(running){
-await init();
-startTimer();
-}else{
-if(ws)ws.close();
+const SYNC_PERIOD=30000
+let lastSync=0
+
+async function ignite(){
+if(isRunning)return
+isRunning=true
+document.getElementById('startBtn').innerText="SAFE MONITORING"
+
+await refreshAllData()
+startWS()
+lastSync=Date.now()
+startProgressLoop()
 }
+
+function startProgressLoop(){
+setInterval(()=>{
+if(!isRunning)return
+
+let elapsed=Date.now()-lastSync
+let progress=(elapsed/SYNC_PERIOD)*100
+document.getElementById('refreshProgress').style.width=
+Math.min(progress,100)+'%'
+
+if(elapsed>=SYNC_PERIOD){
+lastSync=Date.now()
+refreshAllData()
+}
+},100)
 }
 
-async function init(){
-const res=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
-const tickers=await res.json();
-symbols=tickers
+async function refreshAllData(){
+try{
+const tickers=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr')
+.then(r=>r.json())
+
+const targets=tickers
 .filter(t=>t.symbol.endsWith('USDT')&&!EXCLUDE.includes(t.symbol))
 .sort((a,b)=>b.quoteVolume-a.quoteVolume)
-.slice(0,400)
-.map(t=>t.symbol);
+.slice(0,32)
 
-await loadBatch(symbols);
-startWS();
-firstLoad=false;
+for(let t of targets){
+await initSymbol(t.symbol)
+await new Promise(r=>setTimeout(r,80))
 }
 
-async function loadBatch(batch){
-for(let s of batch){
-await loadSymbol(s);
-}
+}catch(e){console.warn("API busy")}
 }
 
-async function loadSymbol(s){
+async function initSymbol(s){
 try{
-const k4=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=4h&limit=100`).then(r=>r.json());
-const k15=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=100`).then(r=>r.json());
+const [k,oi]=await Promise.all([
+fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=100`)
+.then(r=>r.json()),
+getOIStats(s)
+])
 
-const poc4=calcPOC(k4);
-const poc15=calcPOC(k15);
+marketData[s]={
+poc:calculatePOC(k),
+avgVol:k.reduce((a,b)=>a+parseFloat(b[5]),0)/k.length,
+lastPrice:parseFloat(k[k.length-1][4]),
+oi:oi
+}
 
-const ma7=ma(k15,7);
-const ma25=ma(k15,25);
-const ma99=ma(k15,99);
-
-dataMap[s]={poc4,poc15,ma7,ma25,ma99};
 }catch{}
 }
 
-function calcPOC(k){
-let bins={};
-k.forEach(c=>{
-let p=parseFloat(c[4]);
-let v=parseFloat(c[5]);
-let b=Math.round(p*100)/100;
-bins[b]=(bins[b]||0)+v;
-});
-let max=0,price=0;
+function calculatePOC(klines){
+let bins={}
+let prices=klines.map(k=>parseFloat(k[4]))
+let min=Math.min(...prices)
+let max=Math.max(...prices)
+let step=(max-min)/20
+if(step<=0)step=0.00001
+
+klines.forEach(k=>{
+let p=parseFloat(k[4])
+let v=parseFloat(k[5])
+let bin=Math.floor((p-min)/step)*step+min
+bins[bin]=(bins[bin]||0)+v
+})
+
+let poc=min,maxV=0
 for(let b in bins){
-if(bins[b]>max){max=bins[b];price=parseFloat(b);}
+if(bins[b]>maxV){maxV=bins[b];poc=parseFloat(b)}
 }
-return price;
+return poc
 }
 
-function ma(k,n){
-let closes=k.map(x=>parseFloat(x[4]));
-let slice=closes.slice(-n);
-return slice.reduce((a,b)=>a+b,0)/n;
+async function getOIStats(s){
+const fetchOI=(p)=>
+fetch(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${s}&period=${p}&limit=2`)
+.then(r=>r.json())
+
+try{
+const [m5,m15,h1,h4]=await Promise.all([
+fetchOI('5m'),fetchOI('15m'),fetchOI('1h'),fetchOI('4h')
+])
+const calc=(d)=>
+(d&&d.length>1)?
+((parseFloat(d[1].sumOpenInterest)-
+parseFloat(d[0].sumOpenInterest))/
+parseFloat(d[0].sumOpenInterest)*100).toFixed(2):"0.00"
+
+return{m5:calc(m5),m15:calc(m15),h1:calc(h1),h4:calc(h4)}
+}catch{
+return{m5:"0.00",m15:"0.00",h1:"0.00",h4:"0.00"}
+}
 }
 
 function startWS(){
-ws=new WebSocket('wss://fstream.binance.com/ws/!ticker@arr');
+ws=new WebSocket('wss://fstream.binance.com/ws/!ticker@arr')
 ws.onmessage=e=>{
-let arr=JSON.parse(e.data);
-arr.forEach(m=>{
-if(!symbols.includes(m.s))return;
-checkSignal(m.s,parseFloat(m.c));
-});
-};
+JSON.parse(e.data).forEach(m=>{
+let base=marketData[m.s]
+if(!base)return
+
+let price=parseFloat(m.c)
+let volRatio=((parseFloat(m.q)/1440)*15)/base.avgVol
+let alert=(price<base.poc&&volRatio>2)
+
+if(alert&&!loggedAlerts.has(m.s)){
+addLog(m.s,price,volRatio)
 }
 
-function checkSignal(s,price){
-let d=dataMap[s];
-if(!d)return;
-
-if(price>d.poc4){
-let type='pre';
-if(Math.abs(price-d.poc4)/d.poc4<0.002) type='mid';
-if(Math.abs(price-d.poc4)/d.poc4<0.001 && Math.abs(price-d.ma99)/d.ma99<0.002) type='low';
-renderCard(s,price,type);
-if(type==='low') logLow(s,price);
+updateUI(m.s,price,volRatio,alert,base)
+})
 }
 }
 
-function renderCard(s,price,type){
-let el=document.getElementById(s);
+function updateUI(s,p,r,alert,data){
+let el=document.getElementById(`card-${s}`)
 if(!el){
-el=document.createElement('div');
-el.id=s;
-document.getElementById('list').prepend(el);
+el=document.createElement('div')
+el.id=`card-${s}`
+document.getElementById('monitorList').appendChild(el)
 }
-el.className=`card p-3 rounded ${type}`;
+
+el.className=`card-stat p-4 rounded-lg ${alert?'liq-alert':''}`
+
 el.innerHTML=`
-<div class="flex justify-between">
-<b>${s.replace('USDT','')}</b>
-<button onclick="pin('${s}')">★</button>
+<div class="flex justify-between mb-2">
+<span class="text-white font-black italic">${s.replace('USDT','')}</span>
+<span class="${p>data.poc?'text-emerald-400':'text-red-500'} text-xs">
+${p>data.poc?'Above POC':'Below POC'}
+</span>
 </div>
-<div>價格: ${price}</div>
-<div>4H POC: ${dataMap[s].poc4}</div>
-<div>MA99: ${dataMap[s].ma99.toFixed(4)}</div>
-`;
+
+<div class="win-gradient mb-4">
+<div class="pointer" style="left:${Math.min(95,Math.max(5,50+(r*10)))}%"></div>
+</div>
+
+<div class="oi-grid">
+<div class="oi-item">5M ${data.oi.m5}%</div>
+<div class="oi-item">15M ${data.oi.m15}%</div>
+<div class="oi-item">1H ${data.oi.h1}%</div>
+<div class="oi-item">4H ${data.oi.h4}%</div>
+</div>
+
+<div class="mt-3 text-[10px]">
+POC: <span class="text-blue-400">${data.poc.toFixed(4)}</span>
+Vol: ${r.toFixed(1)}x
+</div>
+`
 }
 
-function logLow(s,p){
-let log=document.getElementById('log');
-let div=document.createElement('div');
-div.innerText=`${s} 低風險 @ ${p}`;
-log.prepend(div);
+function addLog(s,p,v){
+loggedAlerts.add(s)
+let div=document.createElement('div')
+div.className="p-2 bg-red-950/20 border-l-2 border-red-600 mb-1 text-[11px]"
+div.innerHTML=`${s} 破位 ${p} | ${v.toFixed(1)}x`
+document.getElementById('logContent').prepend(div)
 }
 
-function pin(s){
-if(pinned.has(s)) pinned.delete(s);
-else pinned.add(s);
-}
-
-function startTimer(){
-let sec=30;
-setInterval(async()=>{
-if(!running)return;
-sec--;
-document.getElementById('progressBar').style.width=(sec/30*100)+'%';
-if(sec<=0){
-sec=30;
-let top100=symbols.slice(0,100);
-await loadBatch(top100);
-}
-},1000);
-}
 </script>
 </body>
 </html>
