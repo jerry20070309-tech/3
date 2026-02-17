@@ -2,214 +2,250 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>POC Breakout Scanner PRO</title>
+<title>POC BREAKOUT MONITOR</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-
 body{
-background: radial-gradient(circle at top,#0b0f1a,#000);
-color:#e5e7eb;
-font-family:monospace;
-overflow:hidden;
+    background:#050505;
+    font-family: 'JetBrains Mono', monospace;
+    overflow:hidden;
 }
-
 .card{
-background: linear-gradient(145deg,#111,#0a0a0a);
-border:1px solid #1f2937;
-transition: all .3s ease;
-box-shadow:0 0 10px rgba(0,0,0,.5);
-animation: fadeIn .5s ease forwards;
+    background:rgba(20,20,25,0.7);
+    backdrop-filter: blur(12px);
+    border:1px solid #1f1f23;
+    transition: all .3s ease;
 }
-
 .card:hover{
-transform: translateY(-4px);
-box-shadow:0 0 20px rgba(59,130,246,.5);
+    transform:translateY(-4px);
+    box-shadow:0 0 25px rgba(59,130,246,.3);
 }
-
 .breakout{
-border:1px solid #3b82f6;
-box-shadow:0 0 15px rgba(59,130,246,.6);
+    box-shadow:0 0 25px rgba(34,197,94,.7);
+    border:1px solid #22c55e;
 }
-
-.low{
-border:1px solid #22c55e;
-box-shadow:0 0 20px rgba(34,197,94,.8);
-animation: pulse 2s infinite;
+.lowrisk{
+    border:1px solid gold !important;
+    box-shadow:0 0 30px rgba(255,215,0,.6);
 }
-
-@keyframes pulse{
-0%{box-shadow:0 0 10px rgba(34,197,94,.4)}
-50%{box-shadow:0 0 30px rgba(34,197,94,1)}
-100%{box-shadow:0 0 10px rgba(34,197,94,.4)}
+.midrisk{
+    border:1px solid orange !important;
 }
-
-@keyframes fadeIn{
-from{opacity:0;transform:translateY(10px)}
-to{opacity:1;transform:translateY(0)}
+.pulse{
+    animation:pulseGlow 1.2s infinite;
 }
-
-.bar{
-height:4px;
-background:linear-gradient(90deg,#22c55e,#3b82f6);
-width:0%;
-transition:width .1s linear;
+@keyframes pulseGlow{
+    0%{box-shadow:0 0 8px #22c55e;}
+    50%{box-shadow:0 0 25px #22c55e;}
+    100%{box-shadow:0 0 8px #22c55e;}
 }
-
+.refresh-bar{
+    height:4px;
+    background:#3b82f6;
+    width:0%;
+}
 </style>
 </head>
+<body class="p-4 h-screen flex flex-col text-gray-200">
 
-<body class="p-4">
+<header class="flex justify-between items-center mb-3">
+<div class="flex gap-4 items-center">
+<button id="toggleBtn" onclick="toggleRun()" 
+class="bg-green-600 px-4 py-2 rounded font-bold">開啟</button>
 
-<div class="flex justify-between items-center mb-4">
-<button onclick="toggleRun()" id="toggleBtn"
-class="bg-green-600 px-5 py-2 rounded shadow hover:bg-green-500 transition">
-開始
-</button>
-
-<div class="w-64 bg-gray-800 rounded">
-<div id="progressBar" class="bar"></div>
+<input id="searchInput" 
+placeholder="搜尋幣對..." 
+class="bg-black border border-zinc-700 px-3 py-1 rounded text-sm"
+onkeydown="handleSearch(event)">
 </div>
+
+<div class="w-64 bg-zinc-800 rounded overflow-hidden">
+<div id="refreshBar" class="refresh-bar"></div>
+</div>
+</header>
+
+<main class="flex flex-1 overflow-hidden gap-4">
+<div id="cards" 
+class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto flex-1 pr-2">
 </div>
 
-<div id="list"
-class="grid grid-cols-4 gap-4 overflow-auto h-[85vh] pr-2">
+<div class="w-72 border border-zinc-800 rounded p-3 bg-black/40 flex flex-col">
+<h2 class="text-green-400 font-bold mb-2">低風險紀錄</h2>
+<div id="lowRiskLog" class="overflow-y-auto text-sm flex-1"></div>
 </div>
+</main>
 
 <script>
+let running=false;
+let refreshTimer=null;
+let progress=0;
+let marketData={};
+let lowRiskLogged=new Set();
+let pinned=new Set(JSON.parse(localStorage.getItem("pinned")||"[]"));
 
-let running=false
-let interval
-let symbols=[]
-let market={}
-const EXCLUDE_TOP=35
+const EXCLUDE_TOP35=[
+'BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT',
+'DOGEUSDT','TRXUSDT','AVAXUSDT','DOTUSDT','MATICUSDT',
+'LINKUSDT','TONUSDT','SHIBUSDT','BCHUSDT','LTCUSDT',
+'NEARUSDT','ICPUSDT','APTUSDT','FILUSDT','ATOMUSDT',
+'ETCUSDT','OPUSDT','ARBUSDT','IMXUSDT','INJUSDT',
+'XLMUSDT','HBARUSDT','STXUSDT','SUIUSDT','TIAUSDT',
+'PEPEUSDT','KASUSDT','RNDRUSDT','MKRUSDT'
+];
 
 function toggleRun(){
-running=!running
-document.getElementById('toggleBtn').innerText=running?'停止':'開始'
-if(running){start()}else{clearInterval(interval)}
+running=!running;
+document.getElementById("toggleBtn").innerText=running?"停止":"開啟";
+document.getElementById("toggleBtn").className=
+running?"bg-red-600 px-4 py-2 rounded font-bold":
+"bg-green-600 px-4 py-2 rounded font-bold";
+
+if(running){
+refreshAll();
+refreshTimer=setInterval(refreshAll,30000);
+setInterval(updateBar,100);
+}else{
+clearInterval(refreshTimer);
+}
 }
 
-async function start(){
-await loadSymbols()
-await refresh()
-
-let t=0
-interval=setInterval(async()=>{
-t+=100
-document.getElementById('progressBar').style.width=(t/30000*100)+'%'
-if(t>=30000){
-t=0
-await refresh()
-}
-},100)
+function updateBar(){
+if(!running) return;
+progress+=100;
+if(progress>=30000) progress=0;
+document.getElementById("refreshBar").style.width=
+(progress/30000*100)+"%";
 }
 
-async function loadSymbols(){
-const res=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr')
-const data=await res.json()
+async function refreshAll(){
+progress=0;
+const tickers=await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr")
+.then(r=>r.json());
 
-symbols=data
-.filter(x=>x.symbol.endsWith('USDT'))
+const targets=tickers
+.filter(t=>t.symbol.endsWith("USDT")
+&&!EXCLUDE_TOP35.includes(t.symbol))
 .sort((a,b)=>b.quoteVolume-a.quoteVolume)
-.slice(EXCLUDE_TOP,200)
-.map(x=>x.symbol)
+.slice(0,400);
+
+for(let t of targets){
+await analyzeSymbol(t.symbol);
+await new Promise(r=>setTimeout(r,80));
+}
 }
 
-async function refresh(){
-market={}
-for(let s of symbols){
-await processSymbol(s)
-await new Promise(r=>setTimeout(r,40))
-}
-render()
-}
-
-async function processSymbol(s){
+async function analyzeSymbol(s){
 try{
+const k15=await fetch(
+`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=120`)
+.then(r=>r.json());
 
-const [k15,k4]=await Promise.all([
-fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=120`).then(r=>r.json()),
-fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=4h&limit=120`).then(r=>r.json())
-])
+const k4h=await fetch(
+`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=4h&limit=120`)
+.then(r=>r.json());
 
-let poc15=calcPOC(k15)
-let poc4=calcPOC(k4)
+const poc4h=calcPOC(k4h);
+const ma7=ma(k15,7);
+const ma25=ma(k15,25);
+const ma99=ma(k15,99);
 
-let last=parseFloat(k15[k15.length-1][4])
-let vol=parseFloat(k15[k15.length-1][5])
-let avgVol=k15.slice(-20).reduce((a,b)=>a+parseFloat(b[5]),0)/20
+const last=k15[k15.length-1];
+const price=parseFloat(last[4]);
+const vol=parseFloat(last[5]);
+const avgVol=k15.reduce((a,b)=>a+parseFloat(b[5]),0)/k15.length;
 
-let breakout = last>poc15 && vol>avgVol*1.5
+const breakout=price>poc4h && vol>avgVol*1.8;
 
-if(!breakout) return
+if(!breakout) return;
 
-let risk='breakout'
+let risk="";
+if(Math.abs(price-poc4h)/price<0.002 
+&& Math.abs(price-ma99)/price<0.002){
+risk="low";
+}else if(Math.abs(price-poc4h)/price<0.002
+|| Math.abs(price-ma99)/price<0.002){
+risk="mid";
+}
 
-if(Math.abs(last-poc15)/poc15<0.003) risk='low'
-
-market[s]={last,poc15,poc4,risk}
+renderCard(s,price,poc4h,ma7,ma25,ma99,risk);
 
 }catch(e){}
 }
 
 function calcPOC(k){
-let bins={}
-let prices=k.map(x=>parseFloat(x[4]))
-let min=Math.min(...prices)
-let max=Math.max(...prices)
-let step=(max-min)/20||0.00001
+let bins={};
+let min=Math.min(...k.map(x=>parseFloat(x[3])));
+let max=Math.max(...k.map(x=>parseFloat(x[2])));
+let step=(max-min)/30||0.00001;
 
-k.forEach(c=>{
-let p=parseFloat(c[4])
-let v=parseFloat(c[5])
-let b=Math.floor((p-min)/step)
-bins[b]=(bins[b]||0)+v
-})
-
-let maxV=0,index=0
-for(let i in bins){
-if(bins[i]>maxV){
-maxV=bins[i]
-index=i
-}
+k.forEach(x=>{
+let p=parseFloat(x[4]);
+let v=parseFloat(x[5]);
+let bin=Math.floor((p-min)/step)*step+min;
+bins[bin]=(bins[bin]||0)+v;
+});
+return parseFloat(
+Object.keys(bins).reduce((a,b)=>
+bins[a]>bins[b]?a:b)
+);
 }
 
-return min+index*step
+function ma(k,len){
+let slice=k.slice(-len);
+return slice.reduce((a,b)=>a+parseFloat(b[4]),0)/len;
 }
 
-function render(){
-let container=document.getElementById('list')
-container.innerHTML=''
-
-Object.keys(market).forEach(s=>{
-let d=market[s]
-
-let div=document.createElement('div')
-div.className='card p-3 '+(d.risk==='low'?'low':'breakout')
-
-div.innerHTML=`
-<div class="flex justify-between text-lg font-bold">
-<span>${s.replace('USDT','')}</span>
-<span class="${d.risk==='low'?'text-green-400':'text-blue-400'}">
-${d.risk==='low'?'低風險突破':'突破POC'}
-</span>
-</div>
-<div class="mt-2 text-sm text-gray-400">
-現價: ${d.last.toFixed(4)}
-</div>
-<div class="text-sm">
-15M POC: ${d.poc15.toFixed(4)}
-</div>
-<div class="text-sm">
-4H POC: ${d.poc4.toFixed(4)}
-</div>
-`
-
-container.appendChild(div)
-})
+function renderCard(s,p,poc,ma7,ma25,ma99,risk){
+let el=document.getElementById("card-"+s);
+if(!el){
+el=document.createElement("div");
+el.id="card-"+s;
+document.getElementById("cards").appendChild(el);
 }
 
+el.className="card p-4 breakout pulse";
+
+if(risk==="low"){
+el.classList.add("lowrisk");
+if(!lowRiskLogged.has(s)){
+lowRiskLogged.add(s);
+let log=document.createElement("div");
+log.innerText=s+" 低風險";
+document.getElementById("lowRiskLog").prepend(log);
+}
+}else if(risk==="mid"){
+el.classList.add("midrisk");
+}
+
+el.innerHTML=`
+<div class="flex justify-between">
+<span class="font-bold text-lg">${s.replace("USDT","")}</span>
+<button onclick="togglePin('${s}')" class="text-xs text-blue-400">標記</button>
+</div>
+<div class="text-sm mt-2">
+現價: ${p.toFixed(4)}<br>
+4H POC: ${poc.toFixed(4)}<br>
+MA7: ${ma7.toFixed(4)}<br>
+MA25: ${ma25.toFixed(4)}<br>
+MA99: ${ma99.toFixed(4)}
+</div>
+`;
+}
+
+function togglePin(s){
+if(pinned.has(s)) pinned.delete(s);
+else pinned.add(s);
+localStorage.setItem("pinned",JSON.stringify([...pinned]));
+}
+
+function handleSearch(e){
+if(e.key==="Enter"){
+let val=e.target.value.toUpperCase();
+if(!val.endsWith("USDT")) val+="USDT";
+analyzeSymbol(val);
+e.target.value="";
+}
+}
 </script>
-
 </body>
 </html>
