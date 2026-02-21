@@ -123,11 +123,11 @@ if(rapidPull)score+=10
 
 if(score>=75){
 renderCard(s,price,score)
-if(score>=85&&!alerted.has(s)){
+if(score>=75&&!alerted.has(s)){
 sendPushover(s,price,score)
 alerted.add(s)
 }
-if(score>=90&&!recordSet.has(s)){
+if(score>=75&&!recordSet.has(s)){
 addRecord(s,price)
 recordSet.add(s)
 }
