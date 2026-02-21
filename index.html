@@ -23,6 +23,7 @@ body{background:#050505;color:#d4d4d8;font-family:monospace;overflow:hidden}
 <div id="bar" class="progress"></div>
 </div>
 <button id="toggle" onclick="toggleSystem()" class="bg-blue-600 px-4 py-2 rounded">開啟</button>
+<button onclick="testTelegram()" class="bg-green-600 px-4 py-2 rounded">測試推播</button>
 </div>
 </header>
 
@@ -38,7 +39,7 @@ body{background:#050505;color:#d4d4d8;font-family:monospace;overflow:hidden}
 
 /* 🔔 Telegram 設定 */
 const TG_BOT_TOKEN = "8248302540:AAHbpQ6eWX28UPUkod6seXCtcYPx5GdmigI"
-const TG_CHAT_ID = "5892649058D"
+const TG_CHAT_ID = "5892649058"
 
 const EXCLUDE=[
 'BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','ADAUSDT','XRPUSDT',
@@ -175,20 +176,28 @@ div.innerText=`${s} ${p}`
 document.getElementById('record').prepend(div)
 }
 
-/* 🔔 Telegram 推播 */
-
+/* 🔔 Telegram 正式推播 */
 function sendTelegram(s,p,score){
-
 fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`,{
 method:"POST",
 headers:{'Content-Type':'application/json'},
 body:JSON.stringify({
 chat_id:TG_CHAT_ID,
-text:`🚀 TRIDENT V6 PRO\n${s} ${score}分\n現價:${p}`,
-parse_mode:"HTML"
+text:`🚀 TRIDENT V6 PRO\n${s} ${score}分\n現價:${p}`
 })
 })
+}
 
+/* 🧪 測試推播功能 */
+function testTelegram(){
+fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`,{
+method:"POST",
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({
+chat_id:TG_CHAT_ID,
+text:`🧪 測試推播成功\nTRIDENT V6 PRO 已連線`
+})
+})
 }
 
 function countdown(){
