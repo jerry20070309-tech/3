@@ -115,19 +115,19 @@ let rapidPull=(price-bottom)/bottom>0.03
 
 let score=0
 if(break4)score+=20
-if(break15)score+=10
-if(structure)score+=15
-if(bigOrder)score+=10
-if(denseOrder)score+=10
-if(rapidPull)score+=10
+if(break15)score+=15
+if(structure)score+=20
+if(bigOrder)score+=20
+if(denseOrder)score+=15
+if(rapidPull)score+=15
 
 if(score>=75){
 renderCard(s,price,score)
-if(score>=75&&!alerted.has(s)){
+if(score>=85&&!alerted.has(s)){
 sendPushover(s,price,score)
 alerted.add(s)
 }
-if(score>=75&&!recordSet.has(s)){
+if(score>=85&&!recordSet.has(s)){
 addRecord(s,price)
 recordSet.add(s)
 }
