@@ -37,7 +37,6 @@ body{background:#050505;color:#d4d4d8;font-family:monospace;overflow:hidden}
 
 <script>
 
-/* 🔔 Telegram 設定 */
 const TG_BOT_TOKEN = "8248302540:AAHbpQ6eWX28UPUkod6seXCtcYPx5GdmigI"
 const TG_CHAT_ID = "5892649058"
 
@@ -102,8 +101,9 @@ let price=parseFloat(k15[k15.length-1][4])
 let volAvg=k15.reduce((a,b)=>a+parseFloat(b[5]),0)/k15.length
 let volNow=parseFloat(k15[k15.length-1][5])
 
-let bigOrder=volNow>volAvg*3
-let denseOrder=volNow>volAvg*2
+/* ===== 爆量敏感度提升 ===== */
+let bigOrder=volNow>volAvg*2
+let denseOrder=volNow>volAvg*1.5
 
 let break4=price>poc4
 let break15=price>poc15
@@ -111,17 +111,27 @@ let break15=price>poc15
 let structure=ma7>ma20&&ma20>ma25&&ma25>ma99
 
 let bottom=Math.min(...k4.slice(-20).map(x=>parseFloat(x[3])))
-let fakeBreak=price<bottom
-
 let rapidPull=(price-bottom)/bottom>0.03
 
+/* ===== 新增防追高與動能過濾 ===== */
+let overExtend = (price - ma20) / ma20 > 0.04
+let shortBottom = Math.min(...k15.slice(-8).map(x=>parseFloat(x[3])))
+let shortPump = (price - shortBottom)/shortBottom > 0.05
+let momentumFade = ma7 < ma20
+
 let score=0
+
 if(break4)score+=20
 if(break15)score+=15
 if(structure)score+=20
 if(bigOrder)score+=20
 if(denseOrder)score+=15
 if(rapidPull)score+=15
+
+/* ===== 扣分機制 ===== */
+if(overExtend) score -= 25
+if(shortPump) score -= 30
+if(momentumFade) score -= 20
 
 if(score>=75){
 renderCard(s,price,score)
@@ -176,7 +186,6 @@ div.innerText=`${s} ${p}`
 document.getElementById('record').prepend(div)
 }
 
-/* 🔔 Telegram 正式推播 */
 function sendTelegram(s,p,score){
 fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`,{
 method:"POST",
@@ -188,7 +197,6 @@ text:`🚀 TRIDENT V6 PRO\n${s} ${score}分\n現價:${p}`
 })
 }
 
-/* 🧪 測試推播功能 */
 function testTelegram(){
 fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`,{
 method:"POST",
