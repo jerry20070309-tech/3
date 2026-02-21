@@ -1,152 +1,127 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>V7 Precision Long Scanner</title>
+<title>V7 REAL MARKET SCANNER</title>
+<script src="https://cdn.tailwindcss.com"></script>
 <style>
-body{background:#0f172a;color:#e2e8f0;font-family:Arial}
-h1{color:#38bdf8}
-button{padding:8px 12px;margin:5px;border:none;background:#2563eb;color:white;border-radius:6px}
-.card{
-background:#1e293b;
-padding:12px;
-margin:10px 0;
-border-radius:8px;
-border:1px solid #334155
-}
-.green{color:#22c55e}
-.red{color:#ef4444}
-input{padding:6px;margin:5px;background:#0f172a;color:white;border:1px solid #334155}
+body{background:#050505;color:#d4d4d8;font-family:monospace;overflow:hidden}
+.card{background:#0f0f11;border:1px solid #222;padding:12px;border-radius:8px;transition:.3s}
+.card:hover{transform:scale(1.02)}
+.progress{height:3px;background:#3b82f6;width:0%}
+.high{border:2px solid #22c55e}
+.mid{border:2px solid #f59e0b}
+.low{border:2px solid #ef4444}
 </style>
 </head>
-<body>
 
-<h1>🏹 V7 Precision Long Scanner</h1>
+<body class="p-6 h-screen flex flex-col">
 
-<div>
-<label>TG Token:</label>
-<input id="tgToken" style="width:400px">
+<header class="flex justify-between items-center mb-4">
+<h1 class="text-2xl font-bold">🏹 V7 Precision Long Scanner</h1>
+
+<div class="flex items-center gap-4">
+<input id="tgToken" placeholder="TG BOT TOKEN" class="px-2 py-1 bg-zinc-800 rounded">
+<input id="tgChat" placeholder="CHAT ID" class="px-2 py-1 bg-zinc-800 rounded">
+
+<div class="w-48 bg-zinc-800 rounded-full overflow-hidden">
+<div id="bar" class="progress"></div>
 </div>
 
-<div>
-<label>Chat ID:</label>
-<input id="tgChat" style="width:200px">
+<button onclick="testPush()" class="bg-green-600 px-4 py-2 rounded">測試推播</button>
+<button id="toggle" onclick="toggleSystem()" class="bg-blue-600 px-4 py-2 rounded">開始掃描</button>
 </div>
+</header>
 
-<button onclick="testPush()">📢 測試推播</button>
-<button onclick="startScan()">▶ 開始掃描</button>
-
-<div id="output"></div>
+<div class="flex flex-1 gap-4 overflow-hidden">
+<div id="main" class="flex-1 grid grid-cols-3 gap-3 overflow-y-auto"></div>
+<div class="w-80 border border-zinc-800 rounded p-2 overflow-y-auto">
+<h2 class="text-sm mb-2">高分紀錄板</h2>
+<div id="record"></div>
+</div>
+</div>
 
 <script>
 
+let running=false
 let alerted=new Set()
 let recordSet=new Set()
 
-// =============================
-// MA
-// =============================
-function ma(data,len){
-if(data.length<len) return 0
-let sum=0
-for(let i=data.length-len;i<data.length;i++){
-sum+=data[i].close
-}
-return sum/len
-}
-
-// =============================
-// TG 推播
-// =============================
+// =========================
+// Telegram
+// =========================
 async function sendTG(symbol,price,score){
 
-let token=document.getElementById("tgToken").value
-let chat=document.getElementById("tgChat").value
+let token=document.getElementById("tgToken").value.trim()
+let chat=document.getElementById("tgChat").value.trim()
+
+if(!token||!chat) return
 
 try{
-let res=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{
+await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{
 method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({
 chat_id:chat,
-text:`🚀 ${symbol}\n價格: ${price}\n分數: ${score}`
+text:`🚀 ${symbol}\n價格:${price}\n分數:${score}`
 })
 })
-
-let data=await res.json()
-console.log("TG:",data)
-
-}catch(e){
-console.log(e)
-}
+}catch(e){}
 }
 
-// =============================
-// 測試推播
-// =============================
 function testPush(){
 sendTG("TEST",999,100)
 }
 
-// =============================
-// Render Card
-// =============================
-function renderCard(symbol,price,score){
-
-let div=document.createElement("div")
-div.className="card"
-
-div.innerHTML=`
-<div><b>${symbol}</b></div>
-<div>價格: ${price}</div>
-<div class="green">分數: ${score}</div>
-`
-
-document.getElementById("output").prepend(div)
+// =========================
+// MA
+// =========================
+function ma(data,n){
+if(data.length<n) return 0
+let sum=0
+for(let i=data.length-n;i<data.length;i++){
+sum+=parseFloat(data[i][4])
+}
+return sum/n
 }
 
-// =============================
-// Record
-// =============================
-function addRecord(symbol,price){
-console.log("紀錄:",symbol,price)
+// =========================
+// 主掃描
+// =========================
+async function refreshAll(){
+
+if(!running) return
+
+try{
+
+let tickers=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json())
+
+let list=tickers
+.filter(t=>t.symbol.endsWith('USDT'))
+.sort((a,b)=>b.quoteVolume-a.quoteVolume)
+.slice(35,135)
+
+for(let t of list){
+await loadSymbol(t.symbol)
+await new Promise(r=>setTimeout(r,120))
 }
 
-// =============================
-// 假資料生成 (測試用)
-// =============================
-function generateData(){
-
-let arr=[]
-let base=100
-
-for(let i=0;i<120;i++){
-
-let change=(Math.random()-0.4)*2
-base+=change
-
-arr.push({
-open:base-1,
-close:base,
-high:base+1,
-low:base-2,
-volume:Math.random()*1000+500
-})
-
+}catch(e){}
 }
 
-return arr
-}
+// =========================
+// 每幣分析
+// =========================
+async function loadSymbol(s){
 
-// =============================
-// 主策略
-// =============================
-function runStrategy(symbol,k15){
+try{
 
-if(!k15||k15.length<99) return
+let k15=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=120`).then(r=>r.json())
 
-let price=k15[k15.length-1].close
-let prevClose=k15[k15.length-2].close
+if(!k15||k15.length<100) return
+
+let price=parseFloat(k15[k15.length-1][4])
+let prevClose=parseFloat(k15[k15.length-2][4])
 
 let ma7=ma(k15,7)
 let ma25=ma(k15,25)
@@ -155,13 +130,11 @@ let ma99=ma(k15,99)
 let ma7_prev=ma(k15.slice(0,-1),7)
 
 // ===== 只做多硬過濾 =====
-let aboveMA7=price>ma7
-let ma7Up=ma7>ma7_prev
-let breakLow=price<k15[k15.length-5].low
+if(price<=ma7) return
+if(ma7<=ma7_prev) return
 
-if(!aboveMA7) return
-if(!ma7Up) return
-if(breakLow) return
+let lastLow=parseFloat(k15[k15.length-5][3])
+if(price<lastLow) return
 
 // ===== 評分 =====
 let score=0
@@ -169,22 +142,18 @@ let score=0
 let slice=35
 let recent=k15.slice(-slice)
 
-let high35=Math.max(...recent.map(c=>c.high))
-let break4=price>high35
-if(break4) score+=20
+let high35=Math.max(...recent.map(c=>parseFloat(c[2])))
+if(price>high35) score+=20
 
-let avgVol=recent.reduce((a,b)=>a+b.volume,0)/slice
-let volNow=k15[k15.length-1].volume
-if(volNow>avgVol*2) score+=20   // 爆量2x
+let avgVol=recent.reduce((a,b)=>a+parseFloat(b[5]),0)/slice
+let volNow=parseFloat(k15[k15.length-1][5])
+if(volNow>avgVol*2) score+=20
 
 let structure=ma7>ma25&&ma25>ma99
 if(structure) score+=20
 
-let bigOrder=true
-if(bigOrder) score+=20
-
-let denseOrder=true
-if(denseOrder) score+=15
+score+=20
+score+=15
 
 let shortPump=(price/prevClose)>1.015
 if(shortPump) score+=10
@@ -192,42 +161,85 @@ if(shortPump) score+=10
 let rapidPull=(price-ma7)/ma7<0.01
 if(rapidPull) score+=15
 
-// ===== 過熱過濾 =====
 let overExtend=(price-ma7)/ma7>0.04
 if(overExtend) score-=30
 
 // ===== 觸發 =====
 if(score>=75){
 
-renderCard(symbol,price,score)
+renderCard(s,price,score)
 
-if(score>=85&&!alerted.has(symbol)){
-sendTG(symbol,price,score)
-alerted.add(symbol)
+if(score>=85&&!alerted.has(s)){
+sendTG(s,price,score)
+alerted.add(s)
 }
 
-if(score>=90&&!recordSet.has(symbol)){
-addRecord(symbol,price)
-recordSet.add(symbol)
+if(score>=90&&!recordSet.has(s)){
+addRecord(s,price)
+recordSet.add(s)
 }
 
 }
 
+}catch(e){}
 }
 
-// =============================
-// 啟動掃描
-// =============================
-function startScan(){
+// =========================
+// UI
+// =========================
+function renderCard(s,p,score){
 
-document.getElementById("output").innerHTML=""
-
-let data=generateData()
-runStrategy("BTCUSDT",data)
-
+let el=document.getElementById('card-'+s)
+if(!el){
+el=document.createElement('div')
+el.id='card-'+s
+document.getElementById('main').appendChild(el)
 }
+
+el.className='card '+(score>=90?'high':score>=85?'mid':'low')
+
+el.innerHTML=`
+<div class="flex justify-between">
+<span>${s}</span>
+<span>${score}分</span>
+</div>
+<div>現價 ${p}</div>
+`
+}
+
+function addRecord(s,p){
+let div=document.createElement('div')
+div.innerText=`${s} ${p}`
+document.getElementById('record').prepend(div)
+}
+
+// =========================
+// 控制
+// =========================
+function toggleSystem(){
+running=!running
+document.getElementById('toggle').innerText=running?'停止':'開始掃描'
+if(running){
+refreshAll()
+}
+}
+
+function countdown(){
+let t=0
+setInterval(()=>{
+if(!running) return
+t+=100
+let percent=(t/30000)*100
+document.getElementById('bar').style.width=percent+'%'
+if(t>=30000){
+t=0
+refreshAll()
+}
+},100)
+}
+
+countdown()
 
 </script>
-
 </body>
 </html>
