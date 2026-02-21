@@ -2,211 +2,197 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>TRIDENT DUAL LAYER FINAL</title>
+<title>TRIDENT V6 PRO</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-body{background:#050505;color:#ddd;font-family:monospace}
-.card{background:#0f0f11;border:1px solid #222;padding:14px;border-radius:12px;margin-bottom:10px;transition:0.3s}
+body{background:#050505;color:#d4d4d8;font-family:monospace;overflow:hidden}
+.card{background:#0f0f11;border:1px solid #222;padding:12px;border-radius:8px;transition:.3s}
 .card:hover{transform:scale(1.02)}
-.lowrisk{border:2px solid #22c55e}
-.midrisk{border:2px solid #f59e0b}
-.prepare{border:2px solid #3b82f6}
-.progress{height:4px;background:#222}
-.bar{height:4px;background:#3b82f6;width:0%}
-.badge{font-size:11px;padding:2px 6px;border-radius:4px;margin-right:4px}
+.progress{height:3px;background:#3b82f6;width:0%}
+.high{border:2px solid #22c55e}
+.mid{border:2px solid #f59e0b}
+.low{border:2px solid #ef4444}
 </style>
 </head>
-<body class="p-6">
+<body class="p-6 h-screen flex flex-col">
 
-<header class="flex justify-between mb-4">
-<h1 class="text-2xl font-bold">資金預熱 + 結構突破系統</h1>
-<div>
-<button id="startBtn" onclick="toggleRun()" class="bg-blue-600 px-4 py-2 rounded">開啟</button>
+<header class="flex justify-between items-center mb-4">
+<h1 class="text-2xl font-bold">TRIDENT V6 PRO</h1>
+<div class="flex items-center gap-4">
+<div class="w-48 bg-zinc-800 rounded-full overflow-hidden">
+<div id="bar" class="progress"></div>
+</div>
+<button id="toggle" onclick="toggleSystem()" class="bg-blue-600 px-4 py-2 rounded">開啟</button>
 </div>
 </header>
 
-<div class="progress mb-4"><div id="bar" class="bar"></div></div>
-
-<input id="searchBox" placeholder="搜尋幣兌 (不會隱藏)" class="mb-4 p-2 bg-black border border-gray-700 w-full">
-
-<div class="grid grid-cols-3 gap-4">
-<div>
-<h2 class="mb-2">符合進場條件</h2>
-<div id="main"></div>
-</div>
-<div>
-<h2 class="mb-2">資金預熱觀察</h2>
-<div id="warm"></div>
-</div>
-<div>
-<h2 class="mb-2">低風險紀錄板</h2>
+<div class="flex flex-1 gap-4 overflow-hidden">
+<div id="main" class="flex-1 grid grid-cols-3 gap-3 overflow-y-auto"></div>
+<div class="w-80 border border-zinc-800 rounded p-2 overflow-y-auto">
+<h2 class="text-sm mb-2">低風險紀錄板</h2>
 <div id="record"></div>
 </div>
 </div>
 
 <script>
+const EXCLUDE=[
+'BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','ADAUSDT','XRPUSDT',
+'XAUUSDT','XAGUSDT'
+]
+
+const MARKETCAP_EXCLUDE=[]
 
 let running=false
-let timer=null
-let countdown=30
-let shownSet=new Set()
+let dataStore={}
+let alerted=new Set()
 let recordSet=new Set()
-let pinned=new Set()
 
-const EXCLUDE=['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT']
+const DISCORD_WEBHOOK="https://discordapp.com/api/webhooks/1474723927652700231/zDQyeI5If_k3rHoNU6fNDBXbxndtOc78-IzCpX-ox44PCY9VBbR-haPGS7g6xQLTRBFv"
 
-function toggleRun(){
+function toggleSystem(){
 running=!running
-document.getElementById('startBtn').innerText=running?'停止':'開啟'
-if(running){
-fetchCycle()
-timer=setInterval(fetchCycle,30000)
-startBar()
-}else{
-clearInterval(timer)
-}
+document.getElementById('toggle').innerText=running?'停止':'開啟'
+if(running){start()}
 }
 
-function startBar(){
-let sec=0
-setInterval(()=>{
+async function start(){
+await refreshAll()
+countdown()
+}
+
+async function refreshAll(){
 if(!running)return
-sec++
-let percent=(sec%30)/30*100
-document.getElementById('bar').style.width=percent+"%"
-},1000)
+try{
+const tickers=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json())
+let list=tickers
+.filter(t=>t.symbol.endsWith('USDT'))
+.filter(t=>!EXCLUDE.includes(t.symbol))
+.sort((a,b)=>b.quoteVolume-a.quoteVolume)
+.slice(35,135)
+
+for(let t of list){
+await loadSymbol(t.symbol)
+await new Promise(r=>setTimeout(r,80))
+}
+}catch(e){}
 }
 
-async function fetchCycle(){
-countdown=30
-let tickers=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json())
-tickers=tickers.filter(t=>t.symbol.endsWith('USDT'))
-tickers=tickers.filter(t=>!EXCLUDE.includes(t.symbol))
-tickers.sort((a,b)=>b.quoteVolume-a.quoteVolume)
-tickers=tickers.slice(35,120)
+async function loadSymbol(s){
+try{
+const k15=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=120`).then(r=>r.json())
+const k4=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=4h&limit=120`).then(r=>r.json())
 
-for(let t of tickers){
-analyze(t.symbol)
-}
-}
+const ma=(arr,n)=>arr.slice(-n).reduce((a,b)=>a+parseFloat(b[4]),0)/n
 
-async function analyze(symbol){
-
-let k4=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=4h&limit=80`).then(r=>r.json())
-let k15=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=80`).then(r=>r.json())
-
-if(!k4||!k15)return
-
-let poc4=calcPOC(k4)
-let poc15=calcPOC(k15)
-
-let close=parseFloat(k15[k15.length-1][4])
 let ma7=ma(k15,7)
 let ma20=ma(k15,20)
 let ma25=ma(k15,25)
 let ma99=ma(k15,99)
 
-let breakout=close>poc4
+let poc4=calcPOC(k4)
+let poc15=calcPOC(k15)
 
-if(!breakout)return
+let price=parseFloat(k15[k15.length-1][4])
+
+let volAvg=k15.reduce((a,b)=>a+parseFloat(b[5]),0)/k15.length
+let volNow=parseFloat(k15[k15.length-1][5])
+
+let bigOrder=volNow>volAvg*3
+let denseOrder=volNow>volAvg*2
+
+let break4=price>poc4
+let break15=price>poc15
+
+let structure=ma7>ma20&&ma20>ma25&&ma25>ma99
+
+let bottom=Math.min(...k4.slice(-20).map(x=>parseFloat(x[3])))
+let fakeBreak=price<bottom
+
+let rapidPull=(price-bottom)/bottom>0.03
 
 let score=0
-let badges=[]
+if(break4)score+=20
+if(break15)score+=10
+if(structure)score+=15
+if(bigOrder)score+=10
+if(denseOrder)score+=10
+if(rapidPull)score+=10
 
-if(ma7>ma25){score+=10;badges.push("MA排列")}
-if(close>poc15){score+=10;badges.push("15M突破")}
-if(ma20>ma25){score+=10;badges.push("MA20強")}
-if(close>ma99){score+=15;badges.push("站上MA99")}
-
-let volAccel=volumeAccel(k15)
-if(volAccel>1.5){score+=15;badges.push("量能加速")}
-
-let z=volumeZ(k15)
-if(z>2){score+=15;badges.push("大單異常")}
-
-let btcDetach=await btcDivergence(symbol)
-if(btcDetach){score+=10;badges.push("脫離BTC")}
-
-let retestPoc=Math.abs(close-poc4)/close<0.01
-let retestMA=Math.abs(close-ma99)/close<0.01
-
-let risk="prepare"
-if(retestPoc&&retestMA){risk="low";score+=10}
-else if(retestPoc||retestMA){risk="mid";score+=5}
-
-if(score<85)return
-
-if(!shownSet.has(symbol)){
-shownSet.add(symbol)
-renderCard(symbol,score,badges,risk)
-if(risk==="low"&&!recordSet.has(symbol)){
-recordSet.add(symbol)
-renderRecord(symbol)
+if(score>=85){
+renderCard(s,price,score)
+if(score>=90&&!alerted.has(s)){
+sendDiscord(s,price,score)
+alerted.add(s)
+}
+if(score>=95&&!recordSet.has(s)){
+addRecord(s,price)
+recordSet.add(s)
 }
 }
-}
-
-function renderCard(symbol,score,badges,risk){
-let div=document.createElement('div')
-div.className=`card ${risk==="low"?'lowrisk':risk==="mid"?'midrisk':'prepare'}`
-div.innerHTML=`
-<div class="flex justify-between">
-<b>${symbol}</b>
-<span>評分 ${score}</span>
-</div>
-<div class="mt-2">${badges.map(b=>`<span class="badge bg-gray-800">${b}</span>`).join("")}</div>
-`
-document.getElementById('main').appendChild(div)
-}
-
-function renderRecord(symbol){
-let div=document.createElement('div')
-div.className="card lowrisk"
-div.innerHTML=`<b>${symbol}</b> 低風險`
-document.getElementById('record').appendChild(div)
+}catch(e){}
 }
 
 function calcPOC(k){
 let bins={}
-k.forEach(x=>{
-let p=parseFloat(x[4])
-let v=parseFloat(x[5])
-let b=Math.round(p*100)/100
-bins[b]=(bins[b]||0)+v
+k.forEach(c=>{
+let p=parseFloat(c[4])
+let v=parseFloat(c[5])
+let key=Math.round(p*100)/100
+bins[key]=(bins[key]||0)+v
 })
-return parseFloat(Object.keys(bins).reduce((a,b)=>bins[a]>bins[b]?a:b))
+let max=0,res=0
+for(let b in bins){
+if(bins[b]>max){max=bins[b];res=parseFloat(b)}
+}
+return res
 }
 
-function ma(k,n){
-let sum=0
-for(let i=k.length-n;i<k.length;i++){
-sum+=parseFloat(k[i][4])
+function renderCard(s,p,score){
+let el=document.getElementById('card-'+s)
+if(!el){
+el=document.createElement('div')
+el.id='card-'+s
+document.getElementById('main').appendChild(el)
 }
-return sum/n
-}
-
-function volumeAccel(k){
-let v1=parseFloat(k[k.length-1][5])
-let v2=parseFloat(k[k.length-2][5])
-return v1/v2
-}
-
-function volumeZ(k){
-let vols=k.map(x=>parseFloat(x[5]))
-let avg=vols.reduce((a,b)=>a+b)/vols.length
-let std=Math.sqrt(vols.map(v=>(v-avg)**2).reduce((a,b)=>a+b)/vols.length)
-let last=vols[vols.length-1]
-return (last-avg)/std
+el.className='card '+(score>=95?'high':score>=90?'mid':'low')
+el.innerHTML=`
+<div class="flex justify-between">
+<span>${s}</span>
+<span>${score}分</span>
+</div>
+<div>現價 ${p}</div>
+`
 }
 
-async function btcDivergence(symbol){
-let btc=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=15m&limit=20`).then(r=>r.json())
-let alt=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=20`).then(r=>r.json())
-let btcChange=(btc[19][4]-btc[0][4])/btc[0][4]
-let altChange=(alt[19][4]-alt[0][4])/alt[0][4]
-return Math.abs(altChange-btcChange)>0.02
+function addRecord(s,p){
+let div=document.createElement('div')
+div.innerText=`${s} ${p}`
+document.getElementById('record').prepend(div)
 }
 
+function sendDiscord(s,p,score){
+fetch(DISCORD_WEBHOOK,{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({
+content:`🚀 ${s} ${score}分 現價:${p}`
+})
+})
+}
+
+function countdown(){
+let t=0
+setInterval(()=>{
+if(!running)return
+t+=100
+let percent=(t/30000)*100
+document.getElementById('bar').style.width=percent+'%'
+if(t>=30000){
+t=0
+refreshAll()
+}
+},100)
+}
 </script>
 </body>
 </html>
