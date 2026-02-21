@@ -35,6 +35,10 @@ body{background:#050505;color:#d4d4d8;font-family:monospace;overflow:hidden}
 </div>
 
 <script>
+
+const PUSHOVER_TOKEN = "你的APP_TOKEN"
+const PUSHOVER_USER = "你的USER_KEY"
+
 const EXCLUDE=[
 'BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','ADAUSDT','XRPUSDT',
 'XAUUSDT','XAGUSDT'
@@ -46,8 +50,6 @@ let running=false
 let dataStore={}
 let alerted=new Set()
 let recordSet=new Set()
-
-const DISCORD_WEBHOOK="https://discordapp.com/api/webhooks/1474723927652700231/zDQyeI5If_k3rHoNU6fNDBXbxndtOc78-IzCpX-ox44PCY9VBbR-haPGS7g6xQLTRBFv"
 
 function toggleSystem(){
 running=!running
@@ -79,6 +81,7 @@ await new Promise(r=>setTimeout(r,80))
 
 async function loadSymbol(s){
 try{
+
 const k15=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=120`).then(r=>r.json())
 const k4=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=4h&limit=120`).then(r=>r.json())
 
@@ -121,7 +124,7 @@ if(rapidPull)score+=10
 if(score>=85){
 renderCard(s,price,score)
 if(score>=90&&!alerted.has(s)){
-sendDiscord(s,price,score)
+sendPushover(s,price,score)
 alerted.add(s)
 }
 if(score>=95&&!recordSet.has(s)){
@@ -129,6 +132,7 @@ addRecord(s,price)
 recordSet.add(s)
 }
 }
+
 }catch(e){}
 }
 
@@ -170,14 +174,22 @@ div.innerText=`${s} ${p}`
 document.getElementById('record').prepend(div)
 }
 
-function sendDiscord(s,p,score){
-fetch(DISCORD_WEBHOOK,{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body:JSON.stringify({
-content:`🚀 ${s} ${score}分 現價:${p}`
+/* 🔔 直接推送 Pushover */
+
+function sendPushover(s,p,score){
+
+const formData = new URLSearchParams()
+formData.append("token",PUSHOVER_TOKEN)
+formData.append("user",PUSHOVER_USER)
+formData.append("title","TRIDENT V6 PRO")
+formData.append("message",`🚀 ${s} ${score}分 現價:${p}`)
+formData.append("priority",score>=95?1:0)
+
+fetch("https://api.pushover.net/1/messages.json",{
+method:"POST",
+body:formData
 })
-})
+
 }
 
 function countdown(){
@@ -193,6 +205,7 @@ refreshAll()
 }
 },100)
 }
+
 </script>
 </body>
 </html>
