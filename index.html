@@ -36,8 +36,8 @@ body{background:#050505;color:#d4d4d8;font-family:monospace;overflow:hidden}
 
 <script>
 
-const PUSHOVER_TOKEN = "a1s9cwmwgcus2m5cuwobmiuejxa8os"
-const PUSHOVER_USER = "uehhd7arweucx7eyt572nujicuqgcs"
+const TG_BOT_TOKEN = "YOUR_BOT_TOKEN"
+const TG_CHAT_ID = "YOUR_CHAT_ID"
 
 const EXCLUDE=[
 'BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','ADAUSDT','XRPUSDT',
@@ -124,7 +124,7 @@ if(rapidPull)score+=15
 if(score>=75){
 renderCard(s,price,score)
 if(score>=85&&!alerted.has(s)){
-sendPushover(s,price,score)
+sendTelegram(s,price,score)
 alerted.add(s)
 }
 if(score>=85&&!recordSet.has(s)){
@@ -174,20 +174,15 @@ div.innerText=`${s} ${p}`
 document.getElementById('record').prepend(div)
 }
 
-/* 🔔 直接推送 Pushover */
+function sendTelegram(s,p,score){
 
-function sendPushover(s,p,score){
-
-const formData = new URLSearchParams()
-formData.append("token",PUSHOVER_TOKEN)
-formData.append("user",PUSHOVER_USER)
-formData.append("title","TRIDENT V6 PRO")
-formData.append("message",`🚀 ${s} ${score}分 現價:${p}`)
-formData.append("priority",score>=95?1:0)
-
-fetch("https://api.pushover.net/1/messages.json",{
+fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`,{
 method:"POST",
-body:formData
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({
+chat_id:TG_CHAT_ID,
+text:`🚀 TRIDENT V6 PRO\n${s}\n${score}分\n現價:${p}`
+})
 })
 
 }
