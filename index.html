@@ -36,8 +36,9 @@ body{background:#050505;color:#d4d4d8;font-family:monospace;overflow:hidden}
 
 <script>
 
-const TG_BOT_TOKEN = "YOUR_BOT_TOKEN"
-const TG_CHAT_ID = "YOUR_CHAT_ID"
+/* 🔔 Telegram 設定 */
+const TG_BOT_TOKEN = "8248302540:AAHbpQ6eWX28UPUkod6seXCtcYPx5GdmigI"
+const TG_CHAT_ID = "5892649058D"
 
 const EXCLUDE=[
 'BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','ADAUSDT','XRPUSDT',
@@ -174,14 +175,17 @@ div.innerText=`${s} ${p}`
 document.getElementById('record').prepend(div)
 }
 
+/* 🔔 Telegram 推播 */
+
 function sendTelegram(s,p,score){
 
 fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`,{
 method:"POST",
-headers:{"Content-Type":"application/json"},
+headers:{'Content-Type':'application/json'},
 body:JSON.stringify({
 chat_id:TG_CHAT_ID,
-text:`🚀 TRIDENT V6 PRO\n${s}\n${score}分\n現價:${p}`
+text:`🚀 TRIDENT V6 PRO\n${s} ${score}分\n現價:${p}`,
+parse_mode:"HTML"
 })
 })
 
