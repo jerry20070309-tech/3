@@ -2,246 +2,211 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>TRIDENT ULTIMATE FINAL</title>
+<title>TRIDENT DUAL LAYER FINAL</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-body{background:#050505;color:#d4d4d8;font-family:monospace}
-.card{background:#111;border:1px solid #222;border-radius:10px;padding:14px;transition:.3s}
-.card:hover{transform:translateY(-4px)}
-.low{border:2px solid #22c55e}
-.mid{border:2px solid #eab308}
-.pre{border:2px solid #3b82f6}
-.refresh{height:4px;background:#3b82f6;width:0%}
-.logbox{background:#0a0a0a;border:1px solid #222}
-.pin{color:#facc15}
+body{background:#050505;color:#ddd;font-family:monospace}
+.card{background:#0f0f11;border:1px solid #222;padding:14px;border-radius:12px;margin-bottom:10px;transition:0.3s}
+.card:hover{transform:scale(1.02)}
+.lowrisk{border:2px solid #22c55e}
+.midrisk{border:2px solid #f59e0b}
+.prepare{border:2px solid #3b82f6}
+.progress{height:4px;background:#222}
+.bar{height:4px;background:#3b82f6;width:0%}
+.badge{font-size:11px;padding:2px 6px;border-radius:4px;margin-right:4px}
 </style>
 </head>
 <body class="p-6">
 
-<div class="flex justify-between mb-4">
-<h1 class="text-xl font-bold text-blue-400">TRIDENT ULTIMATE</h1>
-<div class="flex gap-4">
-<input id="searchInput" placeholder="搜尋幣種..." class="bg-black border border-zinc-700 px-3 py-1 text-sm"/>
-<button onclick="toggleEngine()" id="engineBtn" class="bg-blue-600 px-4 py-1 text-sm">啟動</button>
+<header class="flex justify-between mb-4">
+<h1 class="text-2xl font-bold">資金預熱 + 結構突破系統</h1>
+<div>
+<button id="startBtn" onclick="toggleRun()" class="bg-blue-600 px-4 py-2 rounded">開啟</button>
 </div>
+</header>
+
+<div class="progress mb-4"><div id="bar" class="bar"></div></div>
+
+<input id="searchBox" placeholder="搜尋幣兌 (不會隱藏)" class="mb-4 p-2 bg-black border border-gray-700 w-full">
+
+<div class="grid grid-cols-3 gap-4">
+<div>
+<h2 class="mb-2">符合進場條件</h2>
+<div id="main"></div>
 </div>
-
-<div class="w-full bg-zinc-800 mb-4"><div id="refreshBar" class="refresh"></div></div>
-
-<div class="flex gap-6">
-<div id="cards" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 flex-1"></div>
-
-<div class="w-80 logbox rounded p-3">
-<div class="text-green-400 font-bold mb-2">低風險紀錄</div>
-<div id="logArea" class="text-xs space-y-2 max-h-[600px] overflow-y-auto"></div>
+<div>
+<h2 class="mb-2">資金預熱觀察</h2>
+<div id="warm"></div>
+</div>
+<div>
+<h2 class="mb-2">低風險紀錄板</h2>
+<div id="record"></div>
 </div>
 </div>
 
 <script>
-// ====== 硬排除清單 ======
-const EXCLUDE = [
-'BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT',
-'DOGEUSDT','TRXUSDT','DOTUSDT','XAUUSDT','XAGUSDT'
-];
 
-let running=false;
-let mainTimer=null;
-let progressTimer=null;
-let loggedSet=new Set();
-let pinned=new Set(JSON.parse(localStorage.getItem("pins")||"[]"));
-let marketData={};
-let btcData=[];
+let running=false
+let timer=null
+let countdown=30
+let shownSet=new Set()
+let recordSet=new Set()
+let pinned=new Set()
 
-// ====== 啟動/停止 ======
-function toggleEngine(){
+const EXCLUDE=['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT']
+
+function toggleRun(){
+running=!running
+document.getElementById('startBtn').innerText=running?'停止':'開啟'
 if(running){
-clearInterval(mainTimer);
-clearInterval(progressTimer);
-running=false;
-engineBtn.innerText="啟動";
-return;
+fetchCycle()
+timer=setInterval(fetchCycle,30000)
+startBar()
+}else{
+clearInterval(timer)
 }
-running=true;
-engineBtn.innerText="停止";
-cycle();
-mainTimer=setInterval(cycle,30000);
-progress();
 }
 
-function progress(){
-let w=0;
-progressTimer=setInterval(()=>{
-if(!running)return;
-w+=100/300;
-if(w>=100)w=0;
-refreshBar.style.width=w+"%";
-},100);
+function startBar(){
+let sec=0
+setInterval(()=>{
+if(!running)return
+sec++
+let percent=(sec%30)/30*100
+document.getElementById('bar').style.width=percent+"%"
+},1000)
 }
 
-// ====== 主輪詢 ======
-async function cycle(){
-marketData={};
-await loadBTC();
+async function fetchCycle(){
+countdown=30
+let tickers=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json())
+tickers=tickers.filter(t=>t.symbol.endsWith('USDT'))
+tickers=tickers.filter(t=>!EXCLUDE.includes(t.symbol))
+tickers.sort((a,b)=>b.quoteVolume-a.quoteVolume)
+tickers=tickers.slice(35,120)
 
-let tickers=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json());
-
-let filtered=tickers
-.filter(t=>t.symbol.endsWith('USDT'))
-.filter(t=>!EXCLUDE.includes(t.symbol))
-.sort((a,b)=>b.quoteVolume-a.quoteVolume)
-.slice(0,150);
-
-for(let t of filtered){
-await loadSymbol(t.symbol);
+for(let t of tickers){
+analyze(t.symbol)
+}
 }
 
-render();
+async function analyze(symbol){
+
+let k4=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=4h&limit=80`).then(r=>r.json())
+let k15=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=80`).then(r=>r.json())
+
+if(!k4||!k15)return
+
+let poc4=calcPOC(k4)
+let poc15=calcPOC(k15)
+
+let close=parseFloat(k15[k15.length-1][4])
+let ma7=ma(k15,7)
+let ma20=ma(k15,20)
+let ma25=ma(k15,25)
+let ma99=ma(k15,99)
+
+let breakout=close>poc4
+
+if(!breakout)return
+
+let score=0
+let badges=[]
+
+if(ma7>ma25){score+=10;badges.push("MA排列")}
+if(close>poc15){score+=10;badges.push("15M突破")}
+if(ma20>ma25){score+=10;badges.push("MA20強")}
+if(close>ma99){score+=15;badges.push("站上MA99")}
+
+let volAccel=volumeAccel(k15)
+if(volAccel>1.5){score+=15;badges.push("量能加速")}
+
+let z=volumeZ(k15)
+if(z>2){score+=15;badges.push("大單異常")}
+
+let btcDetach=await btcDivergence(symbol)
+if(btcDetach){score+=10;badges.push("脫離BTC")}
+
+let retestPoc=Math.abs(close-poc4)/close<0.01
+let retestMA=Math.abs(close-ma99)/close<0.01
+
+let risk="prepare"
+if(retestPoc&&retestMA){risk="low";score+=10}
+else if(retestPoc||retestMA){risk="mid";score+=5}
+
+if(score<85)return
+
+if(!shownSet.has(symbol)){
+shownSet.add(symbol)
+renderCard(symbol,score,badges,risk)
+if(risk==="low"&&!recordSet.has(symbol)){
+recordSet.add(symbol)
+renderRecord(symbol)
+}
+}
 }
 
-// ====== BTC ======
-async function loadBTC(){
-btcData=await fetch('https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=15m&limit=100').then(r=>r.json());
-}
-
-// ====== 單幣 ======
-async function loadSymbol(sym){
-try{
-let k15=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=15m&limit=100`).then(r=>r.json());
-let k4h=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=4h&limit=100`).then(r=>r.json());
-
-let price=parseFloat(k15[k15.length-1][4]);
-
-let poc4=calcPOC(k4h);
-if(price<=poc4)return; // 必須突破4H POC
-
-let ma7=MA(k15,7);
-let ma20=MA(k15,20);
-let ma25=MA(k15,25);
-let ma99=MA(k15,99);
-
-let bottom=breakReclaim(k4h);
-let bigOrder=detectBigOrder(k15);
-let dense=detectDense(k15);
-let btcCorr=correlation(k15,btcData);
-
-let score=0;
-if(price>poc4)score+=30;
-if(ma7>ma20 && ma20>ma25 && ma25>ma99)score+=20;
-if(bottom)score+=15;
-if(bigOrder)score+=10;
-if(dense)score+=5;
-if(Math.abs(btcCorr)<0.6)score+=10;
-
-if(score<85)return;
-
-let type="pre";
-if(price<=ma99 || price<=poc4)type="mid";
-if(price<=ma99 && price<=poc4)type="low";
-
-marketData[sym]={price,poc4,score,type};
-
-if(type==="low" && !loggedSet.has(sym)){
-addLog(sym,price,score);
-loggedSet.add(sym);
-}
-
-}catch(e){}
-}
-
-// ====== 工具 ======
-function calcPOC(k){
-let bins={};
-let prices=k.map(x=>parseFloat(x[4]));
-let min=Math.min(...prices),max=Math.max(...prices);
-let step=(max-min)/20||0.00001;
-k.forEach(c=>{
-let p=parseFloat(c[4]);
-let v=parseFloat(c[5]);
-let b=Math.floor((p-min)/step)*step+min;
-bins[b]=(bins[b]||0)+v;
-});
-let maxV=0,poc=min;
-for(let b in bins){
-if(bins[b]>maxV){maxV=bins[b];poc=parseFloat(b);}
-}
-return poc;
-}
-
-function MA(k,len){
-return k.slice(-len).reduce((a,b)=>a+parseFloat(b[4]),0)/len;
-}
-
-function breakReclaim(k){
-let lows=k.map(x=>parseFloat(x[3]));
-let min=Math.min(...lows.slice(0,-5));
-let last=parseFloat(k[k.length-1][4]);
-return last>min*1.02;
-}
-
-function detectBigOrder(k){
-let vols=k.map(x=>parseFloat(x[5]));
-let avg=vols.reduce((a,b)=>a+b)/vols.length;
-let sd=Math.sqrt(vols.map(v=>(v-avg)**2).reduce((a,b)=>a+b)/vols.length);
-return (vols[vols.length-1]-avg)/sd>2.5;
-}
-
-function detectDense(k){
-let vols=k.map(x=>parseFloat(x[5]));
-let avg=vols.reduce((a,b)=>a+b)/vols.length;
-return vols.slice(-5).every(v=>v>avg*1.5);
-}
-
-function correlation(a,b){
-let arr1=a.map(x=>parseFloat(x[4]));
-let arr2=b.map(x=>parseFloat(x[4]));
-let avg1=arr1.reduce((x,y)=>x+y)/arr1.length;
-let avg2=arr2.reduce((x,y)=>x+y)/arr2.length;
-let num=0,d1=0,d2=0;
-for(let i=0;i<arr1.length;i++){
-num+=(arr1[i]-avg1)*(arr2[i]-avg2);
-d1+=(arr1[i]-avg1)**2;
-d2+=(arr2[i]-avg2)**2;
-}
-return num/Math.sqrt(d1*d2);
-}
-
-// ====== UI ======
-function render(){
-cards.innerHTML="";
-Object.keys(marketData).forEach(sym=>{
-let d=marketData[sym];
-cards.innerHTML+=`
-<div class="card ${d.type}">
+function renderCard(symbol,score,badges,risk){
+let div=document.createElement('div')
+div.className=`card ${risk==="low"?'lowrisk':risk==="mid"?'midrisk':'prepare'}`
+div.innerHTML=`
 <div class="flex justify-between">
-<span class="font-bold">${sym.replace('USDT','')}</span>
-<span>${d.score}</span>
+<b>${symbol}</b>
+<span>評分 ${score}</span>
 </div>
-<div class="text-xs mt-2">
-價格 ${d.price.toFixed(4)}<br>
-4H POC ${d.poc4.toFixed(4)}
-</div>
-<button onclick="togglePin('${sym}')" class="mt-2 text-xs ${pinned.has(sym)?'pin':''}">
-${pinned.has(sym)?'取消標記':'標記'}
-</button>
-</div>`;
-});
+<div class="mt-2">${badges.map(b=>`<span class="badge bg-gray-800">${b}</span>`).join("")}</div>
+`
+document.getElementById('main').appendChild(div)
 }
 
-function togglePin(sym){
-if(pinned.has(sym))pinned.delete(sym);
-else pinned.add(sym);
-localStorage.setItem("pins",JSON.stringify([...pinned]));
-render();
+function renderRecord(symbol){
+let div=document.createElement('div')
+div.className="card lowrisk"
+div.innerHTML=`<b>${symbol}</b> 低風險`
+document.getElementById('record').appendChild(div)
 }
 
-function addLog(sym,price,score){
-logArea.innerHTML=
-`<div class="bg-green-900/30 border-l-4 border-green-500 p-2">
-${sym.replace('USDT','')} 低風險進場<br>
-價格 ${price.toFixed(4)}<br>
-評分 ${score}
-</div>`+logArea.innerHTML;
+function calcPOC(k){
+let bins={}
+k.forEach(x=>{
+let p=parseFloat(x[4])
+let v=parseFloat(x[5])
+let b=Math.round(p*100)/100
+bins[b]=(bins[b]||0)+v
+})
+return parseFloat(Object.keys(bins).reduce((a,b)=>bins[a]>bins[b]?a:b))
 }
+
+function ma(k,n){
+let sum=0
+for(let i=k.length-n;i<k.length;i++){
+sum+=parseFloat(k[i][4])
+}
+return sum/n
+}
+
+function volumeAccel(k){
+let v1=parseFloat(k[k.length-1][5])
+let v2=parseFloat(k[k.length-2][5])
+return v1/v2
+}
+
+function volumeZ(k){
+let vols=k.map(x=>parseFloat(x[5]))
+let avg=vols.reduce((a,b)=>a+b)/vols.length
+let std=Math.sqrt(vols.map(v=>(v-avg)**2).reduce((a,b)=>a+b)/vols.length)
+let last=vols[vols.length-1]
+return (last-avg)/std
+}
+
+async function btcDivergence(symbol){
+let btc=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=15m&limit=20`).then(r=>r.json())
+let alt=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=20`).then(r=>r.json())
+let btcChange=(btc[19][4]-btc[0][4])/btc[0][4]
+let altChange=(alt[19][4]-alt[0][4])/alt[0][4]
+return Math.abs(altChange-btcChange)>0.02
+}
+
 </script>
 </body>
 </html>
