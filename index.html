@@ -121,13 +121,13 @@ if(bigOrder)score+=10
 if(denseOrder)score+=10
 if(rapidPull)score+=10
 
-if(score>=85){
+if(score>=75){
 renderCard(s,price,score)
-if(score>=90&&!alerted.has(s)){
+if(score>=85&&!alerted.has(s)){
 sendPushover(s,price,score)
 alerted.add(s)
 }
-if(score>=95&&!recordSet.has(s)){
+if(score>=90&&!recordSet.has(s)){
 addRecord(s,price)
 recordSet.add(s)
 }
