@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>V7 REAL MARKET SCANNER</title>
+<title>V8 波段跟隨版</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 body{background:#050505;color:#d4d4d8;font-family:monospace;overflow:hidden}
@@ -12,13 +12,15 @@ body{background:#050505;color:#d4d4d8;font-family:monospace;overflow:hidden}
 .high{border:2px solid #22c55e}
 .mid{border:2px solid #f59e0b}
 .low{border:2px solid #ef4444}
+.exit{border:2px solid #ef4444}
+.hold{border:2px solid #22c55e}
 </style>
 </head>
 
 <body class="p-6 h-screen flex flex-col">
 
 <header class="flex justify-between items-center mb-4">
-<h1 class="text-2xl font-bold">🏹 V7 Precision Long Scanner</h1>
+<h1 class="text-2xl font-bold">🏹 V8 波段跟隨版</h1>
 
 <div class="flex items-center gap-4">
 <input id="tgToken" placeholder="TG BOT TOKEN" class="px-2 py-1 bg-zinc-800 rounded">
@@ -46,15 +48,14 @@ body{background:#050505;color:#d4d4d8;font-family:monospace;overflow:hidden}
 let running=false
 let alerted=new Set()
 let recordSet=new Set()
+let positions={}   // ====== 新增持倉系統 ======
 
 // =========================
 // Telegram
 // =========================
-async function sendTG(symbol,price,score){
-
+async function sendTG(text){
 let token=document.getElementById("tgToken").value.trim()
 let chat=document.getElementById("tgChat").value.trim()
-
 if(!token||!chat) return
 
 try{
@@ -63,14 +64,14 @@ method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({
 chat_id:chat,
-text:`🚀 ${symbol}\n價格:${price}\n分數:${score}`
+text:text
 })
 })
 }catch(e){}
 }
 
 function testPush(){
-sendTG("TEST",999,100)
+sendTG("V8 測試推播成功")
 }
 
 // =========================
@@ -89,11 +90,9 @@ return sum/n
 // 主掃描
 // =========================
 async function refreshAll(){
-
 if(!running) return
 
 try{
-
 let tickers=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json())
 
 let list=tickers
@@ -105,7 +104,6 @@ for(let t of list){
 await loadSymbol(t.symbol)
 await new Promise(r=>setTimeout(r,120))
 }
-
 }catch(e){}
 }
 
@@ -117,7 +115,6 @@ async function loadSymbol(s){
 try{
 
 let k15=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=120`).then(r=>r.json())
-
 if(!k15||k15.length<100) return
 
 let price=parseFloat(k15[k15.length-1][4])
@@ -126,7 +123,6 @@ let prevClose=parseFloat(k15[k15.length-2][4])
 let ma7=ma(k15,7)
 let ma25=ma(k15,25)
 let ma99=ma(k15,99)
-
 let ma7_prev=ma(k15.slice(0,-1),7)
 
 // ===== 只做多硬過濾 =====
@@ -138,7 +134,6 @@ if(price<lastLow) return
 
 // ===== 評分 =====
 let score=0
-
 let slice=35
 let recent=k15.slice(-slice)
 
@@ -164,21 +159,60 @@ if(rapidPull) score+=15
 let overExtend=(price-ma7)/ma7>0.04
 if(overExtend) score-=30
 
-// ===== 觸發 =====
+// ===== 進場 =====
+if(score>=85 && !positions[s]){
+positions[s]={
+entry:price,
+time:Date.now(),
+max:price
+}
+sendTG(`📈 進場 ${s}\n價格:${price}\n分數:${score}`)
+}
+
+// ===== 持倉管理 =====
+let exitSignal=""
+let trendStatus="健康"
+let momentumStatus="強"
+
+if(positions[s]){
+
+let entry=positions[s].entry
+if(price>positions[s].max) positions[s].max=price
+
+let profit=((price-entry)/entry*100).toFixed(2)
+
+let volDrop=volNow<avgVol
+let breakMA7=price<ma7
+let ma7Down=ma7<=ma7_prev
+let breakMA25=price<ma25
+
+if(volDrop) momentumStatus="轉弱"
+if(ma7Down) trendStatus="轉弱"
+
+if(breakMA7){
+exitSignal="跌破MA7"
+}
+
+if(volNow>avgVol*3 && price<=high35){
+exitSignal="爆量不創高"
+}
+
+if(breakMA25){
+exitSignal="跌破MA25"
+}
+
+if(exitSignal!=""){
+sendTG(`⚠ 出場 ${s}\n原因:${exitSignal}\n價格:${price}\n浮動:${profit}%`)
+delete positions[s]
+}
+
+renderCard(s,price,score,entry,profit,trendStatus,momentumStatus,exitSignal)
+return
+}
+
+// ===== 未持倉 =====
 if(score>=75){
-
-renderCard(s,price,score)
-
-if(score>=85&&!alerted.has(s)){
-sendTG(s,price,score)
-alerted.add(s)
-}
-
-if(score>=90&&!recordSet.has(s)){
-addRecord(s,price)
-recordSet.add(s)
-}
-
+renderCard(s,price,score,null,null,"健康","強","")
 }
 
 }catch(e){}
@@ -187,7 +221,7 @@ recordSet.add(s)
 // =========================
 // UI
 // =========================
-function renderCard(s,p,score){
+function renderCard(s,p,score,entry,profit,trend,momentum,exitSignal){
 
 let el=document.getElementById('card-'+s)
 if(!el){
@@ -196,7 +230,12 @@ el.id='card-'+s
 document.getElementById('main').appendChild(el)
 }
 
-el.className='card '+(score>=90?'high':score>=85?'mid':'low')
+let cls="card"
+if(exitSignal) cls+=" exit"
+else if(entry) cls+=" hold"
+else cls+=" "+(score>=90?'high':score>=85?'mid':'low')
+
+el.className=cls
 
 el.innerHTML=`
 <div class="flex justify-between">
@@ -204,13 +243,12 @@ el.innerHTML=`
 <span>${score}分</span>
 </div>
 <div>現價 ${p}</div>
+${entry?`<div>進場價 ${entry}</div>`:""}
+${profit?`<div>浮動 ${profit}%</div>`:""}
+<div>趨勢 ${trend}</div>
+<div>動能 ${momentum}</div>
+${exitSignal?`<div style="color:red">出場信號 ${exitSignal}</div>`:""}
 `
-}
-
-function addRecord(s,p){
-let div=document.createElement('div')
-div.innerText=`${s} ${p}`
-document.getElementById('record').prepend(div)
 }
 
 // =========================
@@ -219,9 +257,7 @@ document.getElementById('record').prepend(div)
 function toggleSystem(){
 running=!running
 document.getElementById('toggle').innerText=running?'停止':'開始掃描'
-if(running){
-refreshAll()
-}
+if(running) refreshAll()
 }
 
 function countdown(){
