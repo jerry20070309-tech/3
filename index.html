@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>V8 波段跟隨版</title>
+<title>V9 合約資金流波段版</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 body{background:#050505;color:#d4d4d8;font-family:monospace;overflow:hidden}
@@ -20,7 +20,7 @@ body{background:#050505;color:#d4d4d8;font-family:monospace;overflow:hidden}
 <body class="p-6 h-screen flex flex-col">
 
 <header class="flex justify-between items-center mb-4">
-<h1 class="text-2xl font-bold">🏹 V8 波段跟隨版</h1>
+<h1 class="text-2xl font-bold">🏹 V9 合約資金流波段版</h1>
 
 <div class="flex items-center gap-4">
 <input id="tgToken" placeholder="TG BOT TOKEN" class="px-2 py-1 bg-zinc-800 rounded">
@@ -48,35 +48,25 @@ body{background:#050505;color:#d4d4d8;font-family:monospace;overflow:hidden}
 let running=false
 let alerted=new Set()
 let recordSet=new Set()
-let positions={}   // ====== 新增持倉系統 ======
+let positions={}
+let oiCache={}
+let oiDropCount={}
 
-// =========================
-// Telegram
-// =========================
 async function sendTG(text){
 let token=document.getElementById("tgToken").value.trim()
 let chat=document.getElementById("tgChat").value.trim()
 if(!token||!chat) return
-
 try{
 await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{
 method:"POST",
 headers:{"Content-Type":"application/json"},
-body:JSON.stringify({
-chat_id:chat,
-text:text
-})
+body:JSON.stringify({chat_id:chat,text:text})
 })
 }catch(e){}
 }
 
-function testPush(){
-sendTG("V8 測試推播成功")
-}
+function testPush(){ sendTG("V9 測試成功") }
 
-// =========================
-// MA
-// =========================
 function ma(data,n){
 if(data.length<n) return 0
 let sum=0
@@ -86,17 +76,19 @@ sum+=parseFloat(data[i][4])
 return sum/n
 }
 
-// =========================
-// 主掃描
-// =========================
+async function getOI(symbol){
+try{
+let r=await fetch(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`)
+let d=await r.json()
+return parseFloat(d.openInterest)
+}catch(e){ return 0 }
+}
+
 async function refreshAll(){
 if(!running) return
-
 try{
 let tickers=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json())
-
-let list=tickers
-.filter(t=>t.symbol.endsWith('USDT'))
+let list=tickers.filter(t=>t.symbol.endsWith('USDT'))
 .sort((a,b)=>b.quoteVolume-a.quoteVolume)
 .slice(35,135)
 
@@ -107,9 +99,6 @@ await new Promise(r=>setTimeout(r,120))
 }catch(e){}
 }
 
-// =========================
-// 每幣分析
-// =========================
 async function loadSymbol(s){
 
 try{
@@ -125,103 +114,86 @@ let ma25=ma(k15,25)
 let ma99=ma(k15,99)
 let ma7_prev=ma(k15.slice(0,-1),7)
 
-// ===== 只做多硬過濾 =====
 if(price<=ma7) return
 if(ma7<=ma7_prev) return
 
 let lastLow=parseFloat(k15[k15.length-5][3])
 if(price<lastLow) return
 
-// ===== 評分 =====
-let score=0
 let slice=35
 let recent=k15.slice(-slice)
-
 let high35=Math.max(...recent.map(c=>parseFloat(c[2])))
-if(price>high35) score+=20
-
 let avgVol=recent.reduce((a,b)=>a+parseFloat(b[5]),0)/slice
 let volNow=parseFloat(k15[k15.length-1][5])
-if(volNow>avgVol*2) score+=20
 
-let structure=ma7>ma25&&ma25>ma99
-if(structure) score+=20
+let score=0
+let detail={}
 
-score+=20
-score+=15
+if(price>high35){ score+=20; detail.breakout=20 } else detail.breakout=0
+if(volNow>avgVol*2){ score+=20; detail.volume=20 } else detail.volume=0
+if(ma7>ma25&&ma25>ma99){ score+=20; detail.structure=20 } else detail.structure=0
+
+score+=20; detail.bigOrder=20
+score+=15; detail.denseOrder=15
 
 let shortPump=(price/prevClose)>1.015
-if(shortPump) score+=10
+if(shortPump){ score+=10; detail.pump=10 } else detail.pump=0
 
 let rapidPull=(price-ma7)/ma7<0.01
-if(rapidPull) score+=15
+if(rapidPull){ score+=15; detail.pull=15 } else detail.pull=0
 
 let overExtend=(price-ma7)/ma7>0.04
-if(overExtend) score-=30
+if(overExtend){ score-=30; detail.over=-30 } else detail.over=0
 
-// ===== 進場 =====
-if(score>=85 && !positions[s]){
-positions[s]={
-entry:price,
-time:Date.now(),
-max:price
+let oi=await getOI(s)
+
+if(oiCache[s]){
+let change=(oi-oiCache[s])/oiCache[s]*100
+if(change<0){
+oiDropCount[s]=(oiDropCount[s]||0)+1
+}else{
+oiDropCount[s]=0
 }
+}
+oiCache[s]=oi
+
+if(score>=85 && !positions[s]){
+positions[s]={entry:price,max:price,bars:0}
 sendTG(`📈 進場 ${s}\n價格:${price}\n分數:${score}`)
 }
 
-// ===== 持倉管理 =====
-let exitSignal=""
-let trendStatus="健康"
-let momentumStatus="強"
-
 if(positions[s]){
+positions[s].bars++
 
 let entry=positions[s].entry
 if(price>positions[s].max) positions[s].max=price
 
 let profit=((price-entry)/entry*100).toFixed(2)
+let exitSignal=""
 
-let volDrop=volNow<avgVol
-let breakMA7=price<ma7
-let ma7Down=ma7<=ma7_prev
-let breakMA25=price<ma25
-
-if(volDrop) momentumStatus="轉弱"
-if(ma7Down) trendStatus="轉弱"
-
-if(breakMA7){
-exitSignal="跌破MA7"
-}
-
-if(volNow>avgVol*3 && price<=high35){
-exitSignal="爆量不創高"
-}
-
-if(breakMA25){
-exitSignal="跌破MA25"
+if(positions[s].bars>2){
+if(oiDropCount[s]>=3) exitSignal="OI連續下降"
+if(volNow<avgVol) exitSignal="量縮"
+if(price<ma25) exitSignal="跌破MA25"
 }
 
 if(exitSignal!=""){
-sendTG(`⚠ 出場 ${s}\n原因:${exitSignal}\n價格:${price}\n浮動:${profit}%`)
+sendTG(`⚠ 出場 ${s}\n原因:${exitSignal}\n浮動:${profit}%`)
 delete positions[s]
 }
 
-renderCard(s,price,score,entry,profit,trendStatus,momentumStatus,exitSignal)
+renderCard(s,price,score,entry,profit,detail,oi,oiDropCount[s]||0,exitSignal)
 return
 }
 
-// ===== 未持倉 =====
 if(score>=75){
-renderCard(s,price,score,null,null,"健康","強","")
+renderCard(s,price,score,null,null,detail,oi,oiDropCount[s]||0,"")
 }
 
 }catch(e){}
 }
 
-// =========================
-// UI
-// =========================
-function renderCard(s,p,score,entry,profit,trend,momentum,exitSignal){
+function renderCard(s,p,score,entry,profit,detail,oi,oiDrop,exitSignal){
 
 let el=document.getElementById('card-'+s)
 if(!el){
@@ -245,15 +217,20 @@ el.innerHTML=`
 <div>現價 ${p}</div>
 ${entry?`<div>進場價 ${entry}</div>`:""}
 ${profit?`<div>浮動 ${profit}%</div>`:""}
-<div>趨勢 ${trend}</div>
-<div>動能 ${momentum}</div>
+<div>OI ${oi.toFixed(2)}</div>
+<div>OI連續下降 ${oiDrop}</div>
+<div>Breakout ${detail.breakout}</div>
+<div>Volume ${detail.volume}</div>
+<div>Structure ${detail.structure}</div>
+<div>BigOrder ${detail.bigOrder}</div>
+<div>Dense ${detail.denseOrder}</div>
+<div>Pump ${detail.pump}</div>
+<div>Pull ${detail.pull}</div>
+<div>OverExtend ${detail.over}</div>
 ${exitSignal?`<div style="color:red">出場信號 ${exitSignal}</div>`:""}
 `
 }
 
-// =========================
-// 控制
-// =========================
 function toggleSystem(){
 running=!running
 document.getElementById('toggle').innerText=running?'停止':'開始掃描'
@@ -267,10 +244,7 @@ if(!running) return
 t+=100
 let percent=(t/30000)*100
 document.getElementById('bar').style.width=percent+'%'
-if(t>=30000){
-t=0
-refreshAll()
-}
+if(t>=30000){ t=0; refreshAll() }
 },100)
 }
 
