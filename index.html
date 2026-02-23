@@ -111,7 +111,7 @@ let list=tickers
 .filter(t=>t.symbol.endsWith('USDT'))
 .filter(t=>parseFloat(t.quoteVolume)>=MIN_QUOTE_VOLUME)
 .sort((a,b)=>b.quoteVolume-a.quoteVolume)
-.slice(35,135)
+.slice(35,300)
 
 for(let t of list){
 await loadSymbol(t.symbol)
