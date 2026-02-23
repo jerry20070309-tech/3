@@ -173,7 +173,7 @@ let overExtend=(price-ma7)/ma7>0.04
 if(overExtend) score-=30
 
 // ====== 進場 + 新增止損 ======
-if(score>=85&&!positions[s]){
+if(score>=75&&!positions[s]){
 let supportData=await calculateSupport(s,price)
 if(!supportData) return
 
