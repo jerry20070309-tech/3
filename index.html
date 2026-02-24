@@ -586,6 +586,7 @@ async function sendTG(msg){
     let token=document.getElementById("tgToken").value
     let chat=document.getElementById("tgChat").value
     if(!token||!chat) return
+    <button onclick="testPush()">測試推播</button>
 
     fetch(`https://api.telegram.org/bot${token}/sendMessage`,{
         method:"POST",
@@ -719,5 +720,7 @@ setInterval(()=>{
     renderCards()
 
 },3000)
-
+function testPush(){
+    sendTG("✅ V10 測試推播成功")
+}
 </script>
