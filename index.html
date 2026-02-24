@@ -1,51 +1,35 @@
 <script>
 
 //////////////////////////////////////////////////////////////////
-// V10 QUANT ENGINE – PART 1
-// MARKET ENGINE + DATA ENGINE (PRO VERSION)
+// V12 QUANT ENGINE – PART 1
+// MARKET + DATA ENGINE (FULL STRUCTURE VERSION)
 //////////////////////////////////////////////////////////////////
 
-//////////////////////////////
-// 系統核心控制
-//////////////////////////////
-
-const ENGINE = {
+const ENGINE={
     running:false,
-    maxActive:20,
-    subscribeDelay:350,
-    reconnectDelay:3000,
-    oiInterval:10000
+    maxActive:30,              // 監控幣數上限
+    subscribeDelay:250,        // 訂閱節流
+    reconnectDelay:6000,
+    oiInterval:7000            // OI 輪詢間隔
 }
-
-//////////////////////////////
-// WebSocket 管理
-//////////////////////////////
 
 let MARKET_SOCKET=null
 let STREAM_SOCKET=null
-
-//////////////////////////////
-// 訂閱控制
-//////////////////////////////
 
 let SUBSCRIBE_QUEUE=[]
 let ACTIVE_SYMBOLS=new Set()
 let PROCESSING_QUEUE=false
 
-//////////////////////////////
-// Symbol 緩存池
-//////////////////////////////
-
 let SYMBOL_POOL={}
-let OI_POOL={}
 let BTC_POOL={
     k15:[],
-    k1:[]
+    k1:[],
+    lastPrice:0
 }
 
-//////////////////////////////
-// 排除規則
-//////////////////////////////
+//////////////////////////////////////////////////////////////////
+// 排除幣種
+//////////////////////////////////////////////////////////////////
 
 const EXCLUDED_TOP_15=[
 "BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT",
@@ -53,25 +37,51 @@ const EXCLUDED_TOP_15=[
 "MATICUSDT","LTCUSDT","LINKUSDT","BCHUSDT","ATOMUSDT"
 ]
 
-const METAL_FILTER=["GOLD","SILVER","XAU","XAG"]
+//////////////////////////////////////////////////////////////////
+// Symbol 結構
+//////////////////////////////////////////////////////////////////
+
+function createEmptySymbol(){
+    return{
+        lastPrice:0,
+        quoteVolume:0,
+
+        k15:[],
+        k1:[],
+
+        oi:0,
+        prevOI:0,
+        oiHistory:[],
+
+        state:"IDLE",
+        score:0,
+        scoreDetails:{},
+
+        support:0,
+        stopDistance:0,
+
+        breakoutLevel:0,
+        poc:0,
+
+        pushLock:false,
+        exitLock:false,
+
+        whaleExit:false
+    }
+}
 
 //////////////////////////////////////////////////////////////////
-// 系統啟停
+// 引擎控制
 //////////////////////////////////////////////////////////////////
 
 function startEngine(){
-
     if(ENGINE.running) return
-
     ENGINE.running=true
-
     connectMarketSocket()
     connectStreamSocket()
-
 }
 
 function stopEngine(){
-
     ENGINE.running=false
 
     if(MARKET_SOCKET) MARKET_SOCKET.close()
@@ -79,11 +89,10 @@ function stopEngine(){
 
     ACTIVE_SYMBOLS.clear()
     SUBSCRIBE_QUEUE=[]
-
 }
 
 //////////////////////////////////////////////////////////////////
-// 市場監聽 Socket
+// 市場總監聽
 //////////////////////////////////////////////////////////////////
 
 function connectMarketSocket(){
@@ -96,21 +105,22 @@ function connectMarketSocket(){
 
         let data=JSON.parse(e.data)
 
-        data.forEach(ticker=>{
+        data.forEach(t=>{
 
-            let symbol=ticker.s
-            let quoteVol=parseFloat(ticker.q)
+            let symbol=t.s
+            let quoteVol=parseFloat(t.q)
 
             if(!symbol.endsWith("USDT")) return
             if(EXCLUDED_TOP_15.includes(symbol)) return
-            if(METAL_FILTER.some(k=>symbol.includes(k))) return
+
+            // 🔥 啟動捕捉版本成交量門檻（不過低）
             if(quoteVol<2000000) return
 
             if(!SYMBOL_POOL[symbol]){
                 SYMBOL_POOL[symbol]=createEmptySymbol()
             }
 
-            SYMBOL_POOL[symbol].lastPrice=parseFloat(ticker.c)
+            SYMBOL_POOL[symbol].lastPrice=parseFloat(t.c)
             SYMBOL_POOL[symbol].quoteVolume=quoteVol
 
             if(ACTIVE_SYMBOLS.size<ENGINE.maxActive){
@@ -118,19 +128,16 @@ function connectMarketSocket(){
             }
 
         })
-
     }
 
     MARKET_SOCKET.onclose=()=>{
-        if(ENGINE.running){
+        if(ENGINE.running)
             setTimeout(connectMarketSocket,ENGINE.reconnectDelay)
-        }
     }
-
 }
 
 //////////////////////////////////////////////////////////////////
-// Stream Socket
+// K線 + Stream Socket
 //////////////////////////////////////////////////////////////////
 
 function connectStreamSocket(){
@@ -142,53 +149,72 @@ function connectStreamSocket(){
         let msg=JSON.parse(e.data)
         if(!msg.stream) return
 
-        let symbol=msg.data.s
+        let s=msg.data.s
         let k=msg.data.k
 
-        if(!SYMBOL_POOL[symbol]) return
+        let obj={
+            close:parseFloat(k.c),
+            high:parseFloat(k.h),
+            low:parseFloat(k.l),
+            volume:parseFloat(k.v)
+        }
 
-        updateKline(symbol,k)
+        // BTC 特殊池
+        if(s==="BTCUSDT"){
 
-    }
+            BTC_POOL.lastPrice=parseFloat(k.c)
 
-    STREAM_SOCKET.onclose=()=>{
-        if(ENGINE.running){
-            setTimeout(connectStreamSocket,ENGINE.reconnectDelay)
+            if(k.i==="15m"){
+                BTC_POOL.k15.push(obj)
+                if(BTC_POOL.k15.length>300)
+                    BTC_POOL.k15.shift()
+            }
+
+            if(k.i==="1m"){
+                BTC_POOL.k1.push(obj)
+                if(BTC_POOL.k1.length>300)
+                    BTC_POOL.k1.shift()
+            }
+
+            return
+        }
+
+        if(!SYMBOL_POOL[s]) return
+
+        if(k.i==="15m"){
+            SYMBOL_POOL[s].k15.push(obj)
+            if(SYMBOL_POOL[s].k15.length>300)
+                SYMBOL_POOL[s].k15.shift()
+        }
+
+        if(k.i==="1m"){
+            SYMBOL_POOL[s].k1.push(obj)
+            if(SYMBOL_POOL[s].k1.length>300)
+                SYMBOL_POOL[s].k1.shift()
         }
     }
 
-}
+    STREAM_SOCKET.onopen=()=>{
 
-//////////////////////////////////////////////////////////////////
-// 建立空 Symbol 結構
-//////////////////////////////////////////////////////////////////
-
-function createEmptySymbol(){
-
-    return {
-        lastPrice:0,
-        quoteVolume:0,
-        k15:[],
-        k1:[],
-        atr15:0,
-        avgVol:0,
-        oi:0,
-        prevOI:0,
-        state:"IDLE",
-        score:0,
-        scoreDetails:{},
-        support:0,
-        stopDistance:0,
-        trend:"NEUTRAL",
-        momentum:"NEUTRAL",
-        pushLock:false,
-        exitLock:false
+        // 訂閱 BTC
+        STREAM_SOCKET.send(JSON.stringify({
+            method:"SUBSCRIBE",
+            params:[
+                "btcusdt@kline_15m",
+                "btcusdt@kline_1m"
+            ],
+            id:1
+        }))
     }
 
+    STREAM_SOCKET.onclose=()=>{
+        if(ENGINE.running)
+            setTimeout(connectStreamSocket,ENGINE.reconnectDelay)
+    }
 }
 
 //////////////////////////////////////////////////////////////////
-// 訂閱佇列
+// 訂閱佇列控制
 //////////////////////////////////////////////////////////////////
 
 function enqueueSubscribe(symbol){
@@ -198,10 +224,8 @@ function enqueueSubscribe(symbol){
 
     SUBSCRIBE_QUEUE.push(symbol)
 
-    if(!PROCESSING_QUEUE){
+    if(!PROCESSING_QUEUE)
         processQueue()
-    }
-
 }
 
 function processQueue(){
@@ -214,7 +238,6 @@ function processQueue(){
     PROCESSING_QUEUE=true
 
     let symbol=SUBSCRIBE_QUEUE.shift()
-
     ACTIVE_SYMBOLS.add(symbol)
 
     STREAM_SOCKET.send(JSON.stringify({
@@ -227,36 +250,6 @@ function processQueue(){
     }))
 
     setTimeout(processQueue,ENGINE.subscribeDelay)
-
-}
-
-//////////////////////////////////////////////////////////////////
-// K線更新
-//////////////////////////////////////////////////////////////////
-
-function updateKline(symbol,k){
-
-    let close=parseFloat(k.c)
-    let high=parseFloat(k.h)
-    let low=parseFloat(k.l)
-    let volume=parseFloat(k.v)
-
-    let obj={
-        close,high,low,volume
-    }
-
-    if(k.i==="15m"){
-        SYMBOL_POOL[symbol].k15.push(obj)
-        if(SYMBOL_POOL[symbol].k15.length>200)
-            SYMBOL_POOL[symbol].k15.shift()
-    }
-
-    if(k.i==="1m"){
-        SYMBOL_POOL[symbol].k1.push(obj)
-        if(SYMBOL_POOL[symbol].k1.length>200)
-            SYMBOL_POOL[symbol].k1.shift()
-    }
-
 }
 
 //////////////////////////////////////////////////////////////////
@@ -273,10 +266,14 @@ setInterval(()=>{
         .then(r=>r.json())
         .then(d=>{
 
-            let val=parseFloat(d.openInterest)
+            let s=SYMBOL_POOL[symbol]
 
-            SYMBOL_POOL[symbol].prevOI=SYMBOL_POOL[symbol].oi
-            SYMBOL_POOL[symbol].oi=val
+            s.prevOI=s.oi
+            s.oi=parseFloat(d.openInterest)
+
+            s.oiHistory.push(s.oi)
+            if(s.oiHistory.length>30)
+                s.oiHistory.shift()
 
         })
 
@@ -284,65 +281,34 @@ setInterval(()=>{
 
 },ENGINE.oiInterval)
 
-//////////////////////////////////////////////////////////////////
-// BTC 獨立緩存
-//////////////////////////////////////////////////////////////////
-
-function cacheBTC(){
-
-    let btc=SYMBOL_POOL["BTCUSDT"]
-    if(!btc) return
-
-    BTC_POOL.k15=btc.k15
-    BTC_POOL.k1=btc.k1
-
-}
-
-setInterval(cacheBTC,3000)
-
-//////////////////////////////////////////////////////////////////
-// 系統健康監控
-//////////////////////////////////////////////////////////////////
-
-setInterval(()=>{
-
-    if(!ENGINE.running) return
-
-    console.log(
-        "Active:",ACTIVE_SYMBOLS.size,
-        "Queue:",SUBSCRIBE_QUEUE.length
-    )
-
-},10000)
-
 </script>
 <script>
 
 //////////////////////////////////////////////////////////////////
-// V10 STRATEGY + RISK ENGINE
+// V12 STRATEGY ENGINE – FULL FOUR LAYER MODEL
 //////////////////////////////////////////////////////////////////
 
-//////////////////////////////
-// 工具函數
-//////////////////////////////
+//////////////////////////
+// 基礎工具
+//////////////////////////
 
-function MA(data, period){
-    if(data.length<period) return 0
-    return data.slice(-period).reduce((a,b)=>a+b.close,0)/period
+function MA(data,n){
+    if(data.length<n) return 0
+    return data.slice(-n).reduce((a,b)=>a+b.close,0)/n
 }
 
-function getHigh(data, n){
+function getHigh(data,n){
     if(data.length<n) return 0
     return Math.max(...data.slice(-n).map(c=>c.high))
 }
 
-function getLow(data, n){
+function getLow(data,n){
     if(data.length<n) return 0
     return Math.min(...data.slice(-n).map(c=>c.low))
 }
 
-function ATR(data, period){
-    if(data.length<period+1) return 0
+function ATR(data,n){
+    if(data.length<n+1) return 0
     let trs=[]
     for(let i=1;i<data.length;i++){
         let high=data[i].high
@@ -355,11 +321,11 @@ function ATR(data, period){
         )
         trs.push(tr)
     }
-    return trs.slice(-period).reduce((a,b)=>a+b,0)/period
+    return trs.slice(-n).reduce((a,b)=>a+b,0)/n
 }
 
 //////////////////////////////////////////////////////////////////
-// 主策略核心
+// 主策略
 //////////////////////////////////////////////////////////////////
 
 function runFullStrategy(symbol){
@@ -367,44 +333,87 @@ function runFullStrategy(symbol){
     let s=SYMBOL_POOL[symbol]
     if(!s) return
 
-    let k15=s.k15
-    let k1=s.k1
-
-    if(k15.length<120 || k1.length<60) return
+    if(s.k15.length<120 || s.k1.length<60) return
+    if(BTC_POOL.k15.length<120) return
 
     let price=s.lastPrice
 
-    //////////////////////////
-    // 均線結構
-    //////////////////////////
+    //////////////////////////////////////////////////////////////
+    // 第一層：結構層
+    //////////////////////////////////////////////////////////////
 
-    let ma7=MA(k15,7)
-    let ma20=MA(k15,20)
-    let ma25=MA(k15,25)
-    let ma99=MA(k15,99)
+    let ma7=MA(s.k15,7)
+    let ma20=MA(s.k15,20)
+    let ma25=MA(s.k15,25)
+    let ma99=MA(s.k15,99)
 
-    let structureUp=(ma7>ma20 && ma20>ma25 && ma25>ma99)
-    let structureSlope=(ma7>MA(k15.slice(0,-1),7))
+    let structureStrong=(ma7>ma20 && ma20>ma25 && ma25>ma99)
+    let structureBuild=(ma7>ma20 && ma20>ma25)
 
-    //////////////////////////
-    // 35突破
-    //////////////////////////
+    let slopeUp=ma7>MA(s.k15.slice(0,-1),7)
 
-    let high35=getHigh(k15,35)
+    //////////////////////////////////////////////////////////////
+    // 第二層：突破層
+    //////////////////////////////////////////////////////////////
+
+    let high35=getHigh(s.k15,35)
     let breakout=price>high35
+    let nearBreak=price>high35*0.995
 
-    //////////////////////////
-    // 爆量判斷
-    //////////////////////////
+    //////////////////////////////////////////////////////////////
+    // 第三層：動能層
+    //////////////////////////////////////////////////////////////
 
-    let recent=k15.slice(-35)
+    let recent=s.k15.slice(-35)
     let avgVol=recent.reduce((a,b)=>a+b.volume,0)/35
-    let volNow=k15[k15.length-1].volume
+    let volNow=s.k15[s.k15.length-1].volume
     let volRatio=volNow/avgVol
 
-    //////////////////////////
-    // POC 計算
-    //////////////////////////
+    let atr15=ATR(s.k15,14)
+    let btcATR=ATR(BTC_POOL.k15,14)
+
+    let atrExpand=atr15>ATR(s.k15.slice(0,-5),14)
+    let atrDivergence=atr15>btcATR*1.2
+
+    //////////////////////////////////////////////////////////////
+    // 第四層：主力 OI 層
+    //////////////////////////////////////////////////////////////
+
+    let oiNow=s.oi
+    let oiPrev=s.prevOI||oiNow
+    let oiChange=oiPrev>0?((oiNow-oiPrev)/oiPrev*100):0
+
+    let oiBuild=oiChange>0.5
+    let oiStrong=oiChange>2
+
+    let oiTrendUp=false
+    if(s.oiHistory.length>=5){
+        let recentOI=s.oiHistory.slice(-5)
+        oiTrendUp=recentOI[4]>recentOI[0]
+    }
+
+    //////////////////////////////////////////////////////////////
+    // 第五層：BTC 脫鉤層（四層）
+    //////////////////////////////////////////////////////////////
+
+    let btcPrice=BTC_POOL.lastPrice
+    let btcHigh35=getHigh(BTC_POOL.k15,35)
+
+    let priceDecouple=(price>high35 && btcPrice<btcHigh35)
+
+    let btcMA7=MA(BTC_POOL.k15,7)
+    let btcMA20=MA(BTC_POOL.k15,20)
+    let btcStructure=(btcMA7>btcMA20)
+
+    let structureDecouple=(structureStrong && !btcStructure)
+
+    let volumeDecouple=volRatio>1.5 && atrDivergence
+
+    let atrDecouple=atrDivergence
+
+    //////////////////////////////////////////////////////////////
+    // 第六層：POC
+    //////////////////////////////////////////////////////////////
 
     let bucket={}
     recent.forEach(c=>{
@@ -416,90 +425,61 @@ function runFullStrategy(symbol){
     let poc=Object.keys(bucket)
         .sort((a,b)=>bucket[b]-bucket[a])[0]
 
-    let pocBreak=price>parseFloat(poc)
+    s.poc=parseFloat(poc)
 
-    //////////////////////////
-    // OI 增長模型
-    //////////////////////////
+    let pocBreak=price>s.poc
 
-    let oiNow=s.oi
-    let oiPrev=s.prevOI||oiNow
-    let oiChange=oiPrev>0?((oiNow-oiPrev)/oiPrev*100):0
+    //////////////////////////////////////////////////////////////
+    // 第七層：風控層
+    //////////////////////////////////////////////////////////////
 
-    let oiStrong=oiChange>3
-    let oiBuild=oiChange>1
-
-    //////////////////////////
-    // BTC 四層脫鉤
-    //////////////////////////
-
-    let btcScore=0
-
-    if(BTC_POOL.k15.length>50){
-
-        let btcHigh=getHigh(BTC_POOL.k15,35)
-        let btcPrice=BTC_POOL.k15[BTC_POOL.k15.length-1].close
-
-        if(breakout && btcPrice<btcHigh) btcScore+=10
-
-        let btcATR=ATR(BTC_POOL.k15,14)
-        let altATR=ATR(k15,14)
-
-        if(altATR>btcATR) btcScore+=10
-
-        let btcVol=BTC_POOL.k15[BTC_POOL.k15.length-1].volume
-        if(volRatio>1.6 && btcVol<avgVol) btcScore+=10
-
-        if(structureUp && btcPrice<MA(BTC_POOL.k15,20))
-            btcScore+=10
-    }
-
-    //////////////////////////
-    // ATR 差異
-    //////////////////////////
-
-    let atr15=ATR(k15,14)
-    let atrSpike=atr15>ATR(k15.slice(0,-5),14)
-
-    //////////////////////////
-    // 1m 支撐
-    //////////////////////////
-
-    let support=getLow(k1,50)
+    let support=getLow(s.k1,50)
     let stopDistance=price>0?((price-support)/price*100):0
 
-    //////////////////////////
-    // 動能判斷
-    //////////////////////////
+    s.support=support
+    s.stopDistance=stopDistance
 
-    let volDrop=false
-    if(k15.length>3){
-        let v1=k15[k15.length-1].volume
-        let v2=k15[k15.length-2].volume
-        if(v1<v2*0.6) volDrop=true
+    //////////////////////////////////////////////////////////////
+    // 主力撤退模型
+    //////////////////////////////////////////////////////////////
+
+    let whaleExit=false
+    if(oiChange<-1.5 && volRatio<1){
+        whaleExit=true
     }
 
-    //////////////////////////
-    // 分數拆解
-    //////////////////////////
+    //////////////////////////////////////////////////////////////
+    // 分數系統（完整四層）
+    //////////////////////////////////////////////////////////////
 
     let scoreDetails={
-        breakout:breakout?20:0,
-        structure:structureUp?20:0,
-        slope:structureSlope?10:0,
-        volume:volRatio>2?20:(volRatio>1.6?15:0),
-        poc:pocBreak?15:0,
-        oi:oiStrong?15:(oiBuild?10:0),
-        btc:btcScore,
-        atr:atrSpike?10:0
+
+        structure:structureStrong?20:(structureBuild?12:0),
+        slope:slopeUp?8:0,
+
+        breakout:breakout?20:(nearBreak?15:0),
+
+        volume:volRatio>2?20:(volRatio>1.5?15:(volRatio>1.2?8:0)),
+
+        atr:atrExpand?8:0,
+        atrDecouple:atrDecouple?8:0,
+
+        oi:oiStrong?15:(oiBuild?8:0),
+        oiTrend:oiTrendUp?8:0,
+
+        priceDecouple:priceDecouple?10:0,
+        structureDecouple:structureDecouple?8:0,
+        volumeDecouple:volumeDecouple?8:0,
+
+        poc:pocBreak?8:0
     }
 
     let total=Object.values(scoreDetails)
         .reduce((a,b)=>a+b,0)
 
-    //////////////////////////
+    //////////////////////////////////////////////////////////////
     // 狀態機
-    //////////////////////////
+    //////////////////////////////////////////////////////////////
 
     let state="IDLE"
 
@@ -508,53 +488,37 @@ function runFullStrategy(symbol){
     else if(total>=80) state="BUILD"
     else if(total>=65) state="RADAR"
 
-    //////////////////////////
-    // 主力撤退
-    //////////////////////////
-
-    let whaleExit=false
-    if(oiChange<-2 && volDrop) whaleExit=true
-
-    //////////////////////////
-    // 寫回資料池
-    //////////////////////////
+    //////////////////////////////////////////////////////////////
 
     s.score=total
     s.scoreDetails=scoreDetails
     s.state=state
-    s.support=support
-    s.stopDistance=stopDistance
-    s.trend=structureUp?"UP":"FLAT"
-    s.momentum=volRatio>1.6?"STRONG":"NORMAL"
     s.whaleExit=whaleExit
-
 }
 
 //////////////////////////////////////////////////////////////////
-// 週期執行策略
+// 週期執行
 //////////////////////////////////////////////////////////////////
 
 setInterval(()=>{
-
     if(!ENGINE.running) return
-
     ACTIVE_SYMBOLS.forEach(symbol=>{
         runFullStrategy(symbol)
     })
-
-},2500)
+},2000)
 
 </script>
 <style>
 body{background:#050505;color:#d4d4d8;font-family:monospace}
-.panel{padding:10px;border-bottom:1px solid #222}
-.card{background:#0f0f11;border:1px solid #222;padding:8px;margin:8px}
+.panel{padding:12px;border-bottom:1px solid #222}
+.card{background:#0f0f11;border:1px solid #222;padding:10px;margin:10px}
 .STRONG{border:2px solid #22c55e}
 .BREAK{border:2px solid #3b82f6}
 .BUILD{border:2px solid #f59e0b}
 .RADAR{border:2px solid #a855f7}
 .IDLE{border:1px solid #222}
 .alert{color:#ef4444}
+.small{font-size:12px;color:#aaa}
 </style>
 
 <div class="panel">
@@ -563,8 +527,13 @@ body{background:#050505;color:#d4d4d8;font-family:monospace}
 <span id="engineStatus">OFF</span>
 <span id="activeCount"></span>
 <br><br>
+
 <input id="tgToken" placeholder="TG BOT TOKEN">
 <input id="tgChat" placeholder="CHAT ID">
+<button onclick="testPush()">測試推播</button>
+
+<br><br>
+
 <input id="searchSymbol" placeholder="搜尋幣 (例: ARBUSDT)">
 <button onclick="manualSubscribe()">搜尋</button>
 </div>
@@ -578,15 +547,13 @@ body{background:#050505;color:#d4d4d8;font-family:monospace}
 <script>
 
 //////////////////////////////////////////////////////////////////
-// Telegram 推播
+// Telegram
 //////////////////////////////////////////////////////////////////
 
 async function sendTG(msg){
-
-    let token=document.getElementById("tgToken").value
-    let chat=document.getElementById("tgChat").value
+    let token=document.getElementById("tgToken").value.trim()
+    let chat=document.getElementById("tgChat").value.trim()
     if(!token||!chat) return
-    <button onclick="testPush()">測試推播</button>
 
     fetch(`https://api.telegram.org/bot${token}/sendMessage`,{
         method:"POST",
@@ -596,11 +563,14 @@ async function sendTG(msg){
             text:msg
         })
     })
+}
 
+function testPush(){
+    sendTG("✅ V12 完整四層策略 測試成功")
 }
 
 //////////////////////////////////////////////////////////////////
-// 防重複推播控制
+// 推播控制
 //////////////////////////////////////////////////////////////////
 
 function handlePush(symbol){
@@ -608,19 +578,40 @@ function handlePush(symbol){
     let s=SYMBOL_POOL[symbol]
     if(!s) return
 
+    // 風控：止損距離太小不推
+    if(s.stopDistance<1.0) return
+
     if(s.state==="STRONG" && !s.pushLock){
-        sendTG(`🔥 強信號 ${symbol}
-分數:${s.score}
+
+        sendTG(
+`🔥 STRONG ${symbol}
+總分:${s.score}
+
+結構:${s.scoreDetails.structure}
+斜率:${s.scoreDetails.slope}
+突破:${s.scoreDetails.breakout}
+爆量:${s.scoreDetails.volume}
+ATR:${s.scoreDetails.atr}
+ATR脫鉤:${s.scoreDetails.atrDecouple}
+OI:${s.scoreDetails.oi}
+OI趨勢:${s.scoreDetails.oiTrend}
+價格脫鉤:${s.scoreDetails.priceDecouple}
+結構脫鉤:${s.scoreDetails.structureDecouple}
+量能脫鉤:${s.scoreDetails.volumeDecouple}
+POC:${s.scoreDetails.poc}
+
 支撐:${s.support.toFixed(4)}
-止損距離:${s.stopDistance.toFixed(2)}%`)
+止損距離:${s.stopDistance.toFixed(2)}%`
+        )
+
         s.pushLock=true
     }
 
     if(s.whaleExit && !s.exitLock){
-        sendTG(`⚠ 主力撤退 ${symbol}`)
+
+        sendTG(`⚠ EXIT ${symbol} 主力撤退`)
         s.exitLock=true
     }
-
 }
 
 //////////////////////////////////////////////////////////////////
@@ -640,7 +631,6 @@ function updateScoreBoard(){
 
     document.getElementById("scoreBoard").innerHTML=
         `STRONG:${strong} | BREAK:${breakN} | BUILD:${build} | RADAR:${radar}`
-
 }
 
 //////////////////////////////////////////////////////////////////
@@ -663,24 +653,28 @@ function renderCards(){
         div.innerHTML=`
 <b>${symbol}</b> 狀態:${s.state}<br>
 總分:${s.score}<br>
-突破:${s.scoreDetails.breakout}<br>
-結構:${s.scoreDetails.structure}<br>
-斜率:${s.scoreDetails.slope}<br>
-爆量:${s.scoreDetails.volume}<br>
-POC:${s.scoreDetails.poc}<br>
-OI:${s.scoreDetails.oi}<br>
-BTC脫鉤:${s.scoreDetails.btc}<br>
-ATR:${s.scoreDetails.atr}<br>
+<div class="small">
+結構:${s.scoreDetails.structure}
+斜率:${s.scoreDetails.slope}
+突破:${s.scoreDetails.breakout}
+爆量:${s.scoreDetails.volume}
+ATR:${s.scoreDetails.atr}
+ATR脫鉤:${s.scoreDetails.atrDecouple}
+OI:${s.scoreDetails.oi}
+OI趨勢:${s.scoreDetails.oiTrend}
+價格脫鉤:${s.scoreDetails.priceDecouple}
+結構脫鉤:${s.scoreDetails.structureDecouple}
+量能脫鉤:${s.scoreDetails.volumeDecouple}
+POC:${s.scoreDetails.poc}
+</div>
 支撐:${s.support?.toFixed(4)}<br>
 止損距離:${s.stopDistance?.toFixed(2)}%<br>
-OI值:${s.oi}<br>
 ${s.whaleExit?'<span class="alert">主力撤退</span>':''}
 `
 
         container.appendChild(div)
 
         handlePush(symbol)
-
     })
 
     document.getElementById("activeCount").innerText=
@@ -688,7 +682,6 @@ ${s.whaleExit?'<span class="alert">主力撤退</span>':''}
 
     document.getElementById("engineStatus").innerText=
         ENGINE.running?"ON":"OFF"
-
 }
 
 //////////////////////////////////////////////////////////////////
@@ -705,7 +698,6 @@ function manualSubscribe(){
     }
 
     enqueueSubscribe(s)
-
 }
 
 //////////////////////////////////////////////////////////////////
@@ -713,14 +705,9 @@ function manualSubscribe(){
 //////////////////////////////////////////////////////////////////
 
 setInterval(()=>{
-
     if(!ENGINE.running) return
-
     updateScoreBoard()
     renderCards()
+},2500)
 
-},3000)
-function testPush(){
-    sendTG("✅ V10 測試推播成功")
-}
 </script>
