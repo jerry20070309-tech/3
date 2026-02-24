@@ -104,7 +104,7 @@ function connectMarketSocket(){
             if(!symbol.endsWith("USDT")) return
             if(EXCLUDED_TOP_15.includes(symbol)) return
             if(METAL_FILTER.some(k=>symbol.includes(k))) return
-            if(quoteVol<8000000) return
+            if(quoteVol<2000000) return
 
             if(!SYMBOL_POOL[symbol]){
                 SYMBOL_POOL[symbol]=createEmptySymbol()
