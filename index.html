@@ -7,10 +7,10 @@
 
 const ENGINE={
     running:false,
-    maxActive:30,              // 監控幣數上限
-    subscribeDelay:250,        // 訂閱節流
-    reconnectDelay:6000,
-    oiInterval:7000            // OI 輪詢間隔
+    maxActive:15,              // 監控幣數上限
+    subscribeDelay:800,        // 訂閱節流
+    reconnectDelay:600,
+    oiInterval:12000            // OI 輪詢間隔
 }
 
 let MARKET_SOCKET=null
@@ -483,7 +483,7 @@ function runFullStrategy(symbol){
 
     let state="IDLE"
 
-    if(total>=110) state="STRONG"
+    if(total>=65) state="STRONG"
     else if(total>=95) state="BREAK"
     else if(total>=80) state="BUILD"
     else if(total>=65) state="RADAR"
