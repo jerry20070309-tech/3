@@ -1,203 +1,630 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-<meta charset="UTF-8">
-<title>V10 主升段 + OI 跟莊模型</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<!-- =============================== -->
+<!-- V9 Quant Engine - Part 1 -->
+<!-- Market Engine + Data Engine -->
+<!-- =============================== -->
+
+<script>
+
+////////////////////////////////////////////////////////////
+// 全域核心變數
+////////////////////////////////////////////////////////////
+
+let MARKET_SOCKET = null
+let SUB_SOCKET = null
+
+let reconnectTimer = null
+
+let ALL_SYMBOLS = []
+let ACTIVE_SYMBOLS = new Set()
+
+let SYMBOL_CACHE = {}
+let OI_CACHE = {}
+let BTC_CACHE = { k15: [], k1: [] }
+
+let EXCLUDED_SYMBOLS = [
+    "BTCUSDT",
+    "ETHUSDT",
+    "BNBUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "ADAUSDT",
+    "DOGEUSDT",
+    "AVAXUSDT",
+    "TRXUSDT",
+    "DOTUSDT"
+]
+
+let METAL_KEYWORDS = ["GOLD","SILVER","XAU","XAG"]
+
+////////////////////////////////////////////////////////////
+// WebSocket - 全市場 Ticker 監控
+////////////////////////////////////////////////////////////
+
+function startMarketSocket(){
+
+    if(MARKET_SOCKET){
+        MARKET_SOCKET.close()
+    }
+
+    MARKET_SOCKET = new WebSocket("wss://fstream.binance.com/ws/!ticker@arr")
+
+    MARKET_SOCKET.onmessage = function(event){
+
+        let data = JSON.parse(event.data)
+
+        data.forEach(ticker => {
+
+            let symbol = ticker.s
+
+            if(!symbol.endsWith("USDT")) return
+            if(EXCLUDED_SYMBOLS.includes(symbol)) return
+            if(METAL_KEYWORDS.some(k => symbol.includes(k))) return
+
+            let quoteVolume = parseFloat(ticker.q)
+
+            if(quoteVolume < 5000000) return   // 排除低成交量
+
+            if(!SYMBOL_CACHE[symbol]){
+                SYMBOL_CACHE[symbol] = {
+                    k15: [],
+                    k1: [],
+                    lastPrice: parseFloat(ticker.c),
+                    volume: quoteVolume,
+                    state: "IDLE"
+                }
+            }
+
+            SYMBOL_CACHE[symbol].lastPrice = parseFloat(ticker.c)
+            SYMBOL_CACHE[symbol].volume = quoteVolume
+
+            ALL_SYMBOLS.push(symbol)
+
+        })
+
+        filterTopSymbols()
+
+    }
+
+    MARKET_SOCKET.onclose = function(){
+        reconnectMarket()
+    }
+
+}
+
+////////////////////////////////////////////////////////////
+// 市場過濾（排除前35）
+////////////////////////////////////////////////////////////
+
+function filterTopSymbols(){
+
+    let sorted = Object.keys(SYMBOL_CACHE)
+        .sort((a,b)=>SYMBOL_CACHE[b].volume - SYMBOL_CACHE[a].volume)
+
+    let sliced = sorted.slice(35,135)
+
+    sliced.forEach(symbol=>{
+        if(!ACTIVE_SYMBOLS.has(symbol)){
+            subscribeSymbol(symbol)
+        }
+    })
+
+}
+
+////////////////////////////////////////////////////////////
+// 動態訂閱 K 線 + OI
+////////////////////////////////////////////////////////////
+
+function subscribeSymbol(symbol){
+
+    if(ACTIVE_SYMBOLS.has(symbol)) return
+
+    ACTIVE_SYMBOLS.add(symbol)
+
+    if(!SUB_SOCKET || SUB_SOCKET.readyState !== 1){
+        startSubSocket()
+    }
+
+    let streams = [
+        `${symbol.toLowerCase()}@kline_15m`,
+        `${symbol.toLowerCase()}@kline_1m`
+    ]
+
+    SUB_SOCKET.send(JSON.stringify({
+        method:"SUBSCRIBE",
+        params:streams,
+        id:Date.now()
+    }))
+
+}
+
+////////////////////////////////////////////////////////////
+// Sub WebSocket
+////////////////////////////////////////////////////////////
+
+function startSubSocket(){
+
+    SUB_SOCKET = new WebSocket("wss://fstream.binance.com/ws")
+
+    SUB_SOCKET.onopen = function(){
+        console.log("Sub socket connected")
+    }
+
+    SUB_SOCKET.onmessage = function(event){
+
+        let msg = JSON.parse(event.data)
+
+        if(!msg.stream) return
+
+        let stream = msg.stream
+        let data = msg.data
+
+        let symbol = data.s
+
+        if(stream.includes("kline_15m")){
+            updateKline(symbol, data.k, "k15")
+        }
+
+        if(stream.includes("kline_1m")){
+            updateKline(symbol, data.k, "k1")
+        }
+
+    }
+
+    SUB_SOCKET.onclose = function(){
+        reconnectSub()
+    }
+
+}
+
+////////////////////////////////////////////////////////////
+// 更新 K 線緩存
+////////////////////////////////////////////////////////////
+
+function updateKline(symbol, k, type){
+
+    if(!SYMBOL_CACHE[symbol]) return
+
+    let close = parseFloat(k.c)
+    let high = parseFloat(k.h)
+    let low = parseFloat(k.l)
+    let volume = parseFloat(k.v)
+
+    let arr = SYMBOL_CACHE[symbol][type]
+
+    arr.push({
+        close,
+        high,
+        low,
+        volume,
+        time:k.t
+    })
+
+    if(type==="k15" && arr.length>120) arr.shift()
+    if(type==="k1" && arr.length>100) arr.shift()
+
+}
+
+////////////////////////////////////////////////////////////
+// OI 抓取（REST 限速安全版）
+////////////////////////////////////////////////////////////
+
+async function fetchOI(symbol){
+
+    try{
+        let res = await fetch(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`)
+        let data = await res.json()
+        OI_CACHE[symbol] = parseFloat(data.openInterest)
+    }catch(e){}
+}
+
+setInterval(()=>{
+    ACTIVE_SYMBOLS.forEach(symbol=>{
+        fetchOI(symbol)
+    })
+},5000)
+
+////////////////////////////////////////////////////////////
+// 重連機制
+////////////////////////////////////////////////////////////
+
+function reconnectMarket(){
+    if(reconnectTimer) clearTimeout(reconnectTimer)
+    reconnectTimer = setTimeout(()=>{
+        startMarketSocket()
+    },3000)
+}
+
+function reconnectSub(){
+    if(reconnectTimer) clearTimeout(reconnectTimer)
+    reconnectTimer = setTimeout(()=>{
+        startSubSocket()
+    },3000)
+}
+
+////////////////////////////////////////////////////////////
+// 啟動
+////////////////////////////////////////////////////////////
+
+startMarketSocket()
+
+</script>
+<!-- =============================== -->
+<!-- V9 Quant Engine - Part 2 -->
+<!-- Strategy Engine + Score System -->
+<!-- =============================== -->
+
+<script>
+
+////////////////////////////////////////////////////////////
+// 工具函數
+////////////////////////////////////////////////////////////
+
+function MA(data, period){
+    if(data.length < period) return 0
+    let sum = 0
+    for(let i=data.length-period;i<data.length;i++){
+        sum += data[i].close
+    }
+    return sum/period
+}
+
+function ATR(data, period){
+    if(data.length < period+1) return 0
+    let trs = []
+    for(let i=1;i<data.length;i++){
+        let high = data[i].high
+        let low = data[i].low
+        let prevClose = data[i-1].close
+        let tr = Math.max(high-low, Math.abs(high-prevClose), Math.abs(low-prevClose))
+        trs.push(tr)
+    }
+    let slice = trs.slice(-period)
+    return slice.reduce((a,b)=>a+b,0)/period
+}
+
+function getHigh(data, n){
+    if(data.length<n) return 0
+    let slice = data.slice(-n)
+    return Math.max(...slice.map(c=>c.high))
+}
+
+function getLow(data, n){
+    if(data.length<n) return 0
+    let slice = data.slice(-n)
+    return Math.min(...slice.map(c=>c.low))
+}
+
+////////////////////////////////////////////////////////////
+// BTC 脫鉤緩存
+////////////////////////////////////////////////////////////
+
+function updateBTC(){
+
+    let btc = SYMBOL_CACHE["BTCUSDT"]
+    if(!btc) return
+
+    BTC_CACHE.k15 = btc.k15
+    BTC_CACHE.k1 = btc.k1
+
+}
+
+setInterval(updateBTC,2000)
+
+////////////////////////////////////////////////////////////
+// 主策略引擎
+////////////////////////////////////////////////////////////
+
+function runStrategy(symbol){
+
+    let cache = SYMBOL_CACHE[symbol]
+    if(!cache) return
+
+    let k15 = cache.k15
+    let k1 = cache.k1
+
+    if(k15.length < 100 || k1.length < 50) return
+
+    let price = cache.lastPrice
+
+    ////////////////////////////////////////////
+    // 均線
+    ////////////////////////////////////////////
+
+    let ma7 = MA(k15,7)
+    let ma20 = MA(k15,20)
+    let ma25 = MA(k15,25)
+    let ma99 = MA(k15,99)
+
+    ////////////////////////////////////////////
+    // 高點突破
+    ////////////////////////////////////////////
+
+    let high35 = getHigh(k15,35)
+    let breakout = price > high35
+
+    ////////////////////////////////////////////
+    // 爆量
+    ////////////////////////////////////////////
+
+    let recent = k15.slice(-35)
+    let avgVol = recent.reduce((a,b)=>a+b.volume,0)/35
+    let volNow = k15[k15.length-1].volume
+    let volumeRatio = volNow / avgVol
+
+    ////////////////////////////////////////////
+    // POC 模擬（用近似密集區）
+    ////////////////////////////////////////////
+
+    let priceBuckets = {}
+    recent.forEach(c=>{
+        let key = Math.round(c.close*100)/100
+        if(!priceBuckets[key]) priceBuckets[key]=0
+        priceBuckets[key]+=c.volume
+    })
+
+    let pocPrice = Object.keys(priceBuckets)
+        .sort((a,b)=>priceBuckets[b]-priceBuckets[a])[0]
+
+    let pocBreak = price > parseFloat(pocPrice)
+
+    ////////////////////////////////////////////
+    // OI 判斷
+    ////////////////////////////////////////////
+
+    let oi = OI_CACHE[symbol] || 0
+    let oiPrev = cache.prevOI || oi
+    let oiChange = (oi - oiPrev) / oiPrev * 100
+    cache.prevOI = oi
+
+    ////////////////////////////////////////////
+    // BTC 脫鉤四層
+    ////////////////////////////////////////////
+
+    let btc15 = BTC_CACHE.k15
+    let btcScore = 0
+
+    if(btc15.length>35){
+
+        let btcHigh35 = getHigh(btc15,35)
+        let btcPrice = btc15[btc15.length-1].close
+
+        let structureDiff = breakout && btcPrice < btcHigh35
+        if(structureDiff) btcScore += 10
+
+        let btcVol = btc15[btc15.length-1].volume
+        if(volumeRatio > 1.6 && btcVol < avgVol) btcScore += 10
+
+        let btcATR = ATR(btc15,14)
+        let altATR = ATR(k15,14)
+
+        if(altATR > btcATR) btcScore += 10
+
+    }
+
+    ////////////////////////////////////////////
+    // 1m 支撐止損
+    ////////////////////////////////////////////
+
+    let support = getLow(k1,50)
+    let stopDistance = (price-support)/price*100
+
+    ////////////////////////////////////////////
+    // 評分系統
+    ////////////////////////////////////////////
+
+    let scoreDetails = {
+        breakout: breakout?20:0,
+        structure: (ma7>ma20 && ma20>ma25 && ma25>ma99)?20:0,
+        volume: volumeRatio>2?20:(volumeRatio>1.6?15:0),
+        poc: pocBreak?15:0,
+        oi: oiChange>3?15:(oiChange>1?10:0),
+        btc: btcScore
+    }
+
+    let totalScore = Object.values(scoreDetails)
+        .reduce((a,b)=>a+b,0)
+
+    ////////////////////////////////////////////
+    // 狀態機
+    ////////////////////////////////////////////
+
+    let state = "IDLE"
+
+    if(totalScore>=95) state="STRONG"
+    else if(totalScore>=85) state="BREAK"
+    else if(totalScore>=75) state="WATCH"
+    else if(totalScore>=60) state="RADAR"
+
+    cache.state = state
+    cache.score = totalScore
+    cache.scoreDetails = scoreDetails
+    cache.support = support
+    cache.stopDistance = stopDistance
+
+}
+
+////////////////////////////////////////////////////////////
+// 風控建議（高槓桿模型）
+////////////////////////////////////////////////////////////
+
+function getRiskSuggestion(symbol){
+
+    let cache = SYMBOL_CACHE[symbol]
+    if(!cache) return null
+
+    let stop = cache.stopDistance
+
+    if(stop<=0) return null
+
+    let leverage = Math.min(25, Math.floor(10/stop))
+
+    return {
+        stopPercent: stop.toFixed(2),
+        leverage
+    }
+
+}
+
+////////////////////////////////////////////////////////////
+// 週期性跑策略
+////////////////////////////////////////////////////////////
+
+setInterval(()=>{
+    ACTIVE_SYMBOLS.forEach(symbol=>{
+        runStrategy(symbol)
+    })
+},2000)
+
+</script>
+<!-- =============================== -->
+<!-- V9 Quant Engine - Part 3 -->
+<!-- UI + Push + Exit Logic -->
+<!-- =============================== -->
+
 <style>
-body{background:#050505;color:#d4d4d8;font-family:monospace;overflow:hidden}
-.card{background:#0f0f11;border:1px solid #222;padding:12px;border-radius:8px;transition:.3s}
-.card:hover{transform:scale(1.02)}
-.progress{height:3px;background:#3b82f6;width:0%}
+body{background:#050505;color:#d4d4d8;font-family:monospace}
+.card{background:#0f0f11;border:1px solid #222;padding:10px;border-radius:6px;margin-bottom:10px}
+.STRONG{border:2px solid #22c55e}
+.BREAK{border:2px solid #3b82f6}
+.WATCH{border:2px solid #f59e0b}
+.RADAR{border:2px solid #a855f7}
+.IDLE{border:1px solid #222}
 .exit{border:2px solid #ef4444}
-.hold{border:2px solid #22c55e}
 </style>
-</head>
-<body class="p-6 h-screen flex flex-col">
 
-<header class="flex justify-between items-center mb-4">
-<h1 class="text-2xl font-bold">🔥 V10 主升段 + OI 跟莊模型</h1>
+<div style="padding:10px">
 
-<div class="flex items-center gap-4">
-<input id="tgToken" placeholder="TG BOT TOKEN" class="px-2 py-1 bg-zinc-800 rounded">
-<input id="tgChat" placeholder="CHAT ID" class="px-2 py-1 bg-zinc-800 rounded">
-<div class="w-48 bg-zinc-800 rounded-full overflow-hidden">
-<div id="bar" class="progress"></div>
+<div style="margin-bottom:10px">
+<input id="tgToken" placeholder="TG BOT TOKEN">
+<input id="tgChat" placeholder="CHAT ID">
+<input id="searchSymbol" placeholder="搜尋幣 (例如 ARBUSDT)">
+<button onclick="searchSymbol()">搜尋</button>
 </div>
-<button onclick="testPush()" class="bg-green-600 px-4 py-2 rounded">測試推播</button>
-<button id="toggle" onclick="toggleSystem()" class="bg-blue-600 px-4 py-2 rounded">開始掃描</button>
-</div>
-</header>
 
-<div class="flex flex-1 gap-4 overflow-hidden">
-<div id="main" class="flex-1 grid grid-cols-3 gap-3 overflow-y-auto"></div>
-<div class="w-80 border border-zinc-800 rounded p-2 overflow-y-auto">
-<h2 class="text-sm mb-2">高準確率紀錄板</h2>
-<div id="record"></div>
-</div>
+<div id="symbolContainer"></div>
+
 </div>
 
 <script>
 
-let running=false
-let positions={}
+////////////////////////////////////////////////////////////
+// Telegram 推播
+////////////////////////////////////////////////////////////
 
-async function sendTG(text){
-let token=document.getElementById("tgToken").value.trim()
-let chat=document.getElementById("tgChat").value.trim()
-if(!token||!chat) return
-await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({chat_id:chat,text:text})
-})
+async function sendTG(msg){
+    let token=document.getElementById("tgToken").value
+    let chat=document.getElementById("tgChat").value
+    if(!token||!chat) return
+
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({chat_id:chat,text:msg})
+    })
 }
 
-function testPush(){
-sendTG("V10 OI 模型測試成功")
-}
+////////////////////////////////////////////////////////////
+// 出場邏輯
+////////////////////////////////////////////////////////////
 
-function ma(data,n){
-if(data.length<n) return 0
-let sum=0
-for(let i=data.length-n;i<data.length;i++){
-sum+=parseFloat(data[i][4])
-}
-return sum/n
-}
+function checkExit(symbol){
 
-function calcPOC(k){
-let bins={}
-k.forEach(c=>{
-let p=parseFloat(c[4])
-let v=parseFloat(c[5])
-let key=Math.round(p*100)/100
-bins[key]=(bins[key]||0)+v
-})
-let max=0,res=0
-for(let b in bins){
-if(bins[b]>max){max=bins[b];res=parseFloat(b)}
-}
-return res
-}
+    let cache = SYMBOL_CACHE[symbol]
+    if(!cache) return
 
-async function getOI(symbol){
-let res=await fetch(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${symbol}&period=15m&limit=10`)
-let data=await res.json()
-return data.map(x=>parseFloat(x.sumOpenInterest))
-}
+    let price = cache.lastPrice
+    let support = cache.support
 
-async function refreshAll(){
-if(!running) return
-let tickers=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json())
-let list=tickers.filter(t=>t.symbol.endsWith('USDT'))
-.sort((a,b)=>b.quoteVolume-a.quoteVolume)
-.slice(35,135)
+    if(price < support){
+        cache.state="EXIT"
+        sendTG(`⚠ 出場 ${symbol}\n跌破支撐\n價格:${price}`)
+    }
 
-for(let t of list){
-await loadSymbol(t.symbol)
-await new Promise(r=>setTimeout(r,150))
-}
-}
+    let k15 = cache.k15
+    if(k15.length<10) return
 
-async function loadSymbol(s){
+    let lastVol = k15[k15.length-1].volume
+    let prevVol = k15[k15.length-2].volume
 
-let k15=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=120`).then(r=>r.json())
-let k4=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=4h&limit=120`).then(r=>r.json())
-let oiData=await getOI(s)
+    if(lastVol < prevVol*0.6){
+        sendTG(`⚠ 動能消失 ${symbol}`)
+    }
 
-if(!k15||!k4||oiData.length<5) return
-
-let price=parseFloat(k15[k15.length-1][4])
-
-// ===== 4H 趨勢 =====
-let ma20_4h=ma(k4,20)
-let ma50_4h=ma(k4,50)
-if(!(ma20_4h>ma50_4h && price>ma20_4h)) return
-
-// ===== 建倉收斂 =====
-let recent=k15.slice(-80)
-let high=Math.max(...recent.map(c=>parseFloat(c[2])))
-let low=Math.min(...recent.map(c=>parseFloat(c[3])))
-let range=(high-low)/low
-if(range>0.08) return
-
-// ===== POC 突破 =====
-let poc=calcPOC(recent)
-if(price<=poc) return
-
-// ===== OI 確認 =====
-let oiAvg=oiData.slice(0,-1).reduce((a,b)=>a+b,0)/(oiData.length-1)
-let oiNow=oiData[oiData.length-1]
-
-let oiUp=oiData[7]<oiData[8] && oiData[8]<oiData[9]
-
-if(!(oiNow>oiAvg && oiUp)) return
-
-// ===== 進場 =====
-if(!positions[s]){
-positions[s]={entry:price,max:price}
-sendTG(`📈 進場 ${s}\n價格:${price}\nOI 上升確認`)
-}
-
-let exitSignal=""
-let ma20_15=ma(k15,20)
-
-let oiDown=oiData[7]>oiData[8] && oiData[8]>oiData[9]
-
-if(price<ma20_15 && oiDown){
-exitSignal="OI 下降 + 結構破壞"
-}
-
-if(exitSignal){
-sendTG(`⚠ 出場 ${s}\n原因:${exitSignal}`)
-delete positions[s]
-}
-
-renderCard(s,price,poc,oiNow,oiAvg,exitSignal)
+    let oi = OI_CACHE[symbol]
+    if(oi && cache.prevOI && oi < cache.prevOI){
+        sendTG(`⚠ 主力撤退 ${symbol}`)
+    }
 
 }
 
-function renderCard(s,p,poc,oiNow,oiAvg,exitSignal){
-let el=document.getElementById('card-'+s)
-if(!el){
-el=document.createElement('div')
-el.id='card-'+s
-document.getElementById('main').appendChild(el)
-}
-el.className="card "+(exitSignal?"exit":"hold")
-el.innerHTML=`
-<div>${s}</div>
-<div>現價 ${p}</div>
-<div>POC ${poc}</div>
-<div>OI 現在 ${oiNow}</div>
-<div>OI 平均 ${oiAvg.toFixed(2)}</div>
-${exitSignal?`<div style="color:red">${exitSignal}</div>`:""}
-`
+////////////////////////////////////////////////////////////
+// UI 更新
+////////////////////////////////////////////////////////////
+
+function renderUI(){
+
+    let container=document.getElementById("symbolContainer")
+    container.innerHTML=""
+
+    Object.keys(SYMBOL_CACHE).forEach(symbol=>{
+
+        let cache=SYMBOL_CACHE[symbol]
+        if(!cache.score) return
+
+        let risk=getRiskSuggestion(symbol)
+
+        let div=document.createElement("div")
+        div.className="card "+cache.state
+
+        div.innerHTML=`
+        <div><b>${symbol}</b> 狀態: ${cache.state}</div>
+        <div>總分: ${cache.score}</div>
+        <div>突破: ${cache.scoreDetails.breakout}</div>
+        <div>結構: ${cache.scoreDetails.structure}</div>
+        <div>爆量: ${cache.scoreDetails.volume}</div>
+        <div>POC: ${cache.scoreDetails.poc}</div>
+        <div>OI: ${cache.scoreDetails.oi}</div>
+        <div>脫鉤: ${cache.scoreDetails.btc}</div>
+        <div>支撐: ${cache.support?.toFixed(4)}</div>
+        <div>止損距離: ${cache.stopDistance?.toFixed(2)}%</div>
+        <div>建議槓桿: ${risk?risk.leverage:"-"}</div>
+        <div>OI值: ${OI_CACHE[symbol]||"-"}</div>
+        <div>價格: ${cache.lastPrice}</div>
+        `
+
+        container.appendChild(div)
+
+        if(cache.state==="STRONG"){
+            sendTG(`🔥 強信號 ${symbol}\n分數:${cache.score}\n價格:${cache.lastPrice}`)
+        }
+
+        checkExit(symbol)
+
+    })
+
 }
 
-function toggleSystem(){
-running=!running
-document.getElementById('toggle').innerText=running?'停止':'開始掃描'
-if(running) refreshAll()
-}
+setInterval(renderUI,3000)
 
-function countdown(){
-let t=0
-setInterval(()=>{
-if(!running) return
-t+=100
-let percent=(t/30000)*100
-document.getElementById('bar').style.width=percent+'%'
-if(t>=30000){
-t=0
-refreshAll()
-}
-},100)
-}
+////////////////////////////////////////////////////////////
+// 搜尋功能
+////////////////////////////////////////////////////////////
 
-countdown()
+function searchSymbol(){
+
+    let s=document.getElementById("searchSymbol").value.toUpperCase()
+    if(!s.endsWith("USDT")) s+="USDT"
+
+    if(!SYMBOL_CACHE[s]){
+        SYMBOL_CACHE[s]={
+            k15:[],
+            k1:[],
+            state:"IDLE"
+        }
+    }
+
+    subscribeSymbol(s)
+
+}
 
 </script>
-</body>
-</html>
