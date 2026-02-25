@@ -1,643 +1,896 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>V15 QUANT ENGINE</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#050505;color:#d4d4d8;font-family:'Courier New',monospace;font-size:13px}
+.top-panel{padding:14px 18px;border-bottom:1px solid #1a1a1a;background:#0a0a0c;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.top-panel input{background:#111;border:1px solid #333;color:#d4d4d8;padding:6px 10px;border-radius:4px;width:200px}
+.btn{padding:6px 14px;border:none;border-radius:4px;cursor:pointer;font-family:monospace;font-size:13px;font-weight:bold}
+.btn-green{background:#16a34a;color:#fff}
+.btn-red{background:#dc2626;color:#fff}
+.btn-gray{background:#374151;color:#d4d4d8}
+.btn-yellow{background:#92400e;color:#fcd34d}
+.status-bar{padding:10px 18px;border-bottom:1px solid #1a1a1a;background:#0d0d10;display:flex;gap:20px;flex-wrap:wrap}
+.stat{display:flex;flex-direction:column;gap:2px}
+.stat-label{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:1px}
+.stat-value{font-size:14px;font-weight:bold}
+.score-bar{padding:8px 18px;border-bottom:1px solid #1a1a1a;background:#0a0a0c;display:flex;gap:20px;flex-wrap:wrap;align-items:center}
+.score-bar span{font-size:13px}
+.STRONG-txt{color:#22c55e}
+.BREAK-txt{color:#3b82f6}
+.BUILD-txt{color:#f59e0b}
+.RADAR-txt{color:#a855f7}
+.IDLE-txt{color:#444}
+#cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;padding:14px}
+.card{background:#0f0f11;border:1px solid #222;border-radius:6px;padding:12px;transition:border .2s}
+.card.STRONG{border:2px solid #22c55e;background:#080e08}
+.card.BREAK{border:2px solid #3b82f6;background:#080a10}
+.card.BUILD{border:2px solid #f59e0b;background:#100d04}
+.card.RADAR{border:2px solid #a855f7;background:#0c0810}
+.card.IDLE{border:1px solid #1e1e1e}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.card-symbol{font-size:15px;font-weight:bold;letter-spacing:.5px}
+.card-state{font-size:11px;padding:2px 7px;border-radius:3px;font-weight:bold}
+.state-STRONG{background:#14532d;color:#86efac}
+.state-BREAK{background:#1e3a5f;color:#93c5fd}
+.state-BUILD{background:#451a03;color:#fcd34d}
+.state-RADAR{background:#2e1065;color:#c4b5fd}
+.state-IDLE{background:#1a1a1a;color:#555}
+.card-score{font-size:24px;font-weight:bold;margin-bottom:6px}
+.score-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px 6px;font-size:11px;color:#888;margin-bottom:8px}
+.score-item{display:flex;justify-content:space-between;gap:4px}
+.score-item .sv{color:#d4d4d8;font-weight:bold}
+.divider{border:none;border-top:1px solid #1e1e1e;margin:6px 0}
+.card-risk{font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:3px}
+.card-risk .rl{color:#888}
+.card-risk .rv{color:#d4d4d8;font-weight:bold}
+.tp-row{font-size:11px;color:#22c55e;margin-top:4px}
+.sl-row{font-size:11px;color:#ef4444;margin-top:2px}
+.alert-exit{color:#ef4444;font-weight:bold;font-size:11px;margin-top:4px;padding:3px 6px;background:#200808;border-radius:3px}
+.trail-row{color:#f59e0b;font-size:11px;margin-top:4px}
+.lock-badge{font-size:10px;color:#555;margin-top:2px}
+.cd-badge{font-size:10px;color:#3b82f6;margin-top:2px}
+.log-panel{position:fixed;bottom:0;left:0;right:0;height:120px;background:#050505;border-top:1px solid #1a1a1a;overflow-y:auto;padding:6px 14px;font-size:11px}
+.log-line{padding:1px 0;border-bottom:1px solid #0d0d0d}
+.log-line.info{color:#4b7fa8}
+.log-line.warn{color:#a87a2a}
+.log-line.signal{color:#22c55e;font-weight:bold}
+.log-line.exit{color:#ef4444;font-weight:bold}
+.log-line.tp{color:#a855f7;font-weight:bold}
+.log-line.err{color:#7f1d1d}
+.spacer{height:130px}
+</style>
+</head>
+<body>
+
+<div class="top-panel">
+  <button class="btn btn-green" onclick="startEngine()">▶ 開始掃描</button>
+  <button class="btn btn-red" onclick="stopEngine()">■ 停止</button>
+  <input id="tgToken" placeholder="Telegram Bot Token">
+  <input id="tgChat" placeholder="Chat ID">
+  <button class="btn btn-gray" onclick="testPush()">測試推播</button>
+  <button class="btn btn-yellow" onclick="clearLocks()">清除鎖定</button>
+</div>
+
+<div class="status-bar">
+  <div class="stat"><span class="stat-label">引擎</span><span class="stat-value" id="engSt" style="color:#ef4444">OFF</span></div>
+  <div class="stat"><span class="stat-label">監控幣數</span><span class="stat-value" id="uniCnt">0</span></div>
+  <div class="stat"><span class="stat-label">WS狀態</span><span class="stat-value" id="wsSt" style="color:#ef4444">—</span></div>
+  <div class="stat"><span class="stat-label">輪替倒數</span><span class="stat-value" id="rotTmr">—</span></div>
+  <div class="stat"><span class="stat-label">最後更新</span><span class="stat-value" id="lastUpd">—</span></div>
+  <div class="stat"><span class="stat-label">REST/分</span><span class="stat-value" id="reqR">0</span></div>
+</div>
+
+<div class="score-bar">
+  <span class="STRONG-txt" id="cS">STRONG:0</span>
+  <span class="BREAK-txt" id="cB">BREAK:0</span>
+  <span class="BUILD-txt" id="cBu">BUILD:0</span>
+  <span class="RADAR-txt" id="cR">RADAR:0</span>
+  <span class="IDLE-txt" id="cI">IDLE:0</span>
+  <span style="color:#666;margin-left:12px;font-size:11px">進場門檻: <span id="thrLabel" style="color:#f59e0b">BUILD(65分)</span></span>
+  <button class="btn btn-gray" style="font-size:11px;padding:3px 8px" onclick="cycleThr()">切換門檻</button>
+</div>
+
+<div id="cards"></div>
+<div class="spacer"></div>
+<div class="log-panel" id="logPanel"></div>
+
 <script>
+'use strict'
+///////////////////////////////////////////////////////////////
+// V15 QUANT ENGINE
+// 主要改動：
+//  1. 進場門檻降低 + 可切換（RADAR/BUILD/BREAK/STRONG）
+//  2. pushLock 加冷卻重置機制（分數下降後解鎖，可再推）
+//  3. 止損：1m前30根成交量密集區底部（VPOC底部支撐）
+//  4. 止盈TP1：頂部壓力位（近30根1m高點密集區頂部）
+//     止盈TP2：1m平均ATR × 倍數（動態目標）
+//  5. 出場條件鬆綁：2條成立即出（原3條全成立）
+//  6. 移動止損加速：浮盈5%移成本，10%移+3%，20%移+8%
+///////////////////////////////////////////////////////////////
 
-//////////////////////////////////////////////////////////////////
-// V13 QUANT ENGINE – FIXED 20 + 30 MIN ROTATION
-//////////////////////////////////////////////////////////////////
-
+//──────────────────── 引擎設定 ────────────────────
 const ENGINE={
     running:false,
-    universeSize:20,
-    rotationInterval:30*60*1000, // 30分鐘
-    reconnectDelay:3000,
-    oiInterval:15000             // OI 降速
+    universeSize:30,
+    rotationInterval:30*60*1000,
+    reconnectDelay:5000,
+    oiQueueInterval:800,
+    strategyInterval:3000,
+    uiInterval:2000,
+    historyBars:300,
+    minBars15:100,
+    minBars1:50,
+    maxStreamPerWS:180,
+    stopMinDist:0.5,       // 止損距離最小值%（降低門檻）
+    riskPct:1,             // 每筆固定風險%
+    // 移動止損三段
+    trail1Pct:5,           // 浮盈5% → 止損到成本
+    trail2Pct:10,          // 浮盈10% → 止損到+3%
+    trail2Loc:3,
+    trail3Pct:20,          // 浮盈20% → 止損到+8%
+    trail3Loc:8,
+    // 止盈ATR倍數
+    tpAtrMult:3.0,         // TP2 = 進場價 + ATR×3
+    // 推播冷卻：分數掉出目標區後可重新解鎖
+    pushCooldownBars:20,   // 策略輪次跑20次後且分數重新達標才重推
 }
 
-let STREAM_SOCKET=null
+//──────────────────── 進場門檻（可切換）────────────────────
+const THR_LEVELS=[
+    {label:'RADAR(55分)',  score:55},
+    {label:'BUILD(70分)',  score:70},
+    {label:'BREAK(85分)',  score:85},
+    {label:'STRONG(100分)',score:100},
+]
+let thrIdx=1   // 預設 BUILD
+function cycleThr(){
+    thrIdx=(thrIdx+1)%THR_LEVELS.length
+    document.getElementById('thrLabel').textContent=THR_LEVELS[thrIdx].label
+    log(`進場門檻切換為 ${THR_LEVELS[thrIdx].label}`,'warn')
+}
+
+//──────────────────── 排除大幣 ────────────────────
+const EXCLUDED_TOP35=new Set([
+"BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT",
+"ADAUSDT","DOGEUSDT","AVAXUSDT","TRXUSDT","DOTUSDT",
+"MATICUSDT","LTCUSDT","LINKUSDT","BCHUSDT","ATOMUSDT",
+"UNIUSDT","ETCUSDT","XLMUSDT","FILUSDT","APTUSDT",
+"ARBUSDT","OPUSDT","NEARUSDT","INJUSDT","STXUSDT",
+"RUNEUSDT","SUIUSDT","SEIUSDT","TIAUSDT","GALAUSDT",
+"SANDUSDT","MANAUSDT","AAVEUSDT","MKRUSDT","SNXUSDT"
+])
+
+//──────────────────── 全域狀態 ────────────────────
+let STREAM_SOCKETS=[]
 let SYMBOL_POOL={}
 let BTC_POOL={k15:[],k1:[],lastPrice:0}
 let CURRENT_UNIVERSE=[]
+let OI_QUEUE_IDX=0
+let rotationLeft=ENGINE.rotationInterval
+let reqCount=0,reqCountMin=0,lastReqReset=Date.now()
+let rotationTimer=null,oiTimer=null,strategyTimer=null,uiTimer=null
 
-//////////////////////////////////////////////////////////////////
-// 排除幣
-//////////////////////////////////////////////////////////////////
-
-const EXCLUDED_TOP_15=[
-"BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT",
-"ADAUSDT","DOGEUSDT","AVAXUSDT","TRXUSDT","DOTUSDT",
-"MATICUSDT","LTCUSDT","LINKUSDT","BCHUSDT","ATOMUSDT"
-]
-
-//////////////////////////////////////////////////////////////////
-// Symbol 結構
-//////////////////////////////////////////////////////////////////
-
+//──────────────────── Symbol 結構 ────────────────────
 function createEmptySymbol(){
     return{
-        lastPrice:0,
-        quoteVolume:0,
-        k15:[],
-        k1:[],
-        oi:0,
-        prevOI:0,
-        oiHistory:[],
-        state:"IDLE",
-        score:0,
-        scoreDetails:{},
-        support:0,
-        stopDistance:0,
-        poc:0,
+        lastPrice:0, quoteVolume:0,
+        k15:[], k1:[],
+        oi:0, prevOI:0, oiHistory:[],
+        state:"IDLE", score:0, scoreDetails:{},
+        // 風控
+        stopPrice:0,    // 止損價（成交量密集底部）
+        stopDist:0,     // 止損距離%
+        tp1:0,          // 止盈1：壓力位頂部
+        tp2:0,          // 止盈2：ATR目標
+        suggestLev:1,
+        // 出場追蹤
+        exitCheckOIDown:0,
+        exitVolDown:false,
+        exitNoNewHigh:false,
+        lastHigh:0,
         whaleExit:false,
+        exitReason:'',
+        // 推播控制
         pushLock:false,
-        exitLock:false
+        pushCooldown:0,  // 冷卻計數器
+        exitLock:false,
+        // 移動止損
+        inPosition:false,
+        entryPrice:0,
+        trailStage:0,
+        currentStop:0,
+        // 雜項
+        oiChange:0, volRatio:0,
+        sym1hRet:0, btc1hRet:0,
+        poc:0, pocResistance:0,
+        atr1m:0,
     }
 }
 
-//////////////////////////////////////////////////////////////////
-// 啟動引擎
-//////////////////////////////////////////////////////////////////
+//──────────────────── 日誌 ────────────────────
+const MAX_LOG=150
+function log(msg,type='info'){
+    let p=document.getElementById('logPanel')
+    if(!p) return
+    let d=document.createElement('div')
+    d.className='log-line '+type
+    d.textContent=`[${new Date().toTimeString().slice(0,8)}] ${msg}`
+    p.insertBefore(d,p.firstChild)
+    let ls=p.querySelectorAll('.log-line')
+    if(ls.length>MAX_LOG) ls[ls.length-1].remove()
+}
 
+//──────────────────── 請求計數 ────────────────────
+function countReq(){
+    reqCount++
+    if(Date.now()-lastReqReset>60000){
+        reqCountMin=reqCount; reqCount=0; lastReqReset=Date.now()
+    }
+}
+
+//──────────────────── 安全 fetch ────────────────────
+async function safeFetch(url,timeout=9000){
+    countReq()
+    let ctrl=new AbortController()
+    let tid=setTimeout(()=>ctrl.abort(),timeout)
+    try{
+        let r=await fetch(url,{signal:ctrl.signal})
+        clearTimeout(tid)
+        if(!r.ok) throw new Error(`HTTP ${r.status}`)
+        return await r.json()
+    }catch(e){ clearTimeout(tid); throw e }
+}
+
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+
+//──────────────────── 啟動 ────────────────────
 async function startEngine(){
-
-    if(ENGINE.running) return
+    if(ENGINE.running){log('已在運行','warn');return}
     ENGINE.running=true
+    setEngUI(true)
+    log('V15 引擎啟動','info')
+    try{ await buildUniverse() }
+    catch(e){
+        log('Universe失敗:'+e.message,'err')
+        ENGINE.running=false; setEngUI(false); return
+    }
+    await warmUpHistory()
+    connectAllSockets()
+    startOIQueue()
 
-    await buildUniverse()
-    connectStreamSocket()
+    rotationTimer=setInterval(async()=>{
+        if(!ENGINE.running) return
+        log('30分鐘輪替','warn')
+        rotationLeft=ENGINE.rotationInterval
+        await rotateUniverse()
+    },ENGINE.rotationInterval)
+
+    strategyTimer=setInterval(()=>{
+        if(!ENGINE.running) return
+        CURRENT_UNIVERSE.forEach(s=>runStrategy(s))
+    },ENGINE.strategyInterval)
+
+    uiTimer=setInterval(()=>{
+        if(!ENGINE.running) return
+        renderCards(); updateStatusBar()
+    },ENGINE.uiInterval)
 
     setInterval(()=>{
         if(!ENGINE.running) return
-        rotateUniverse()
-    },ENGINE.rotationInterval)
+        rotationLeft=Math.max(0,rotationLeft-1000)
+        let m=Math.floor(rotationLeft/60000),sc=Math.floor((rotationLeft%60000)/1000)
+        document.getElementById('rotTmr').textContent=`${m}m ${sc}s`
+    },1000)
 }
 
 function stopEngine(){
     ENGINE.running=false
-    if(STREAM_SOCKET) STREAM_SOCKET.close()
+    STREAM_SOCKETS.forEach(ws=>{try{ws.close()}catch(e){}})
+    STREAM_SOCKETS=[]
+    ;[rotationTimer,oiTimer,strategyTimer,uiTimer].forEach(t=>{if(t)clearInterval(t)})
+    setEngUI(false)
+    log('引擎停止','warn')
 }
 
-//////////////////////////////////////////////////////////////////
-// 建立 Universe
-//////////////////////////////////////////////////////////////////
+function setEngUI(on){
+    let el=document.getElementById('engSt')
+    el.textContent=on?'ON':'OFF'
+    el.style.color=on?'#22c55e':'#ef4444'
+    document.getElementById('wsSt').textContent='—'
+    document.getElementById('wsSt').style.color='#ef4444'
+}
 
+function clearLocks(){
+    CURRENT_UNIVERSE.forEach(s=>{
+        if(SYMBOL_POOL[s]){
+            SYMBOL_POOL[s].pushLock=false
+            SYMBOL_POOL[s].pushCooldown=0
+            SYMBOL_POOL[s].exitLock=false
+        }
+    })
+    log('推播鎖全清','warn')
+}
+
+//──────────────────── 建立 Universe ────────────────────
 async function buildUniverse(){
-
-    let tickers=await fetch(
-        "https://fapi.binance.com/fapi/v1/ticker/24hr"
-    ).then(r=>r.json())
-
+    log('取得合約清單...','info')
+    let [tickers,exInfo]=await Promise.all([
+        safeFetch("https://fapi.binance.com/fapi/v1/ticker/24hr"),
+        safeFetch("https://fapi.binance.com/fapi/v1/exchangeInfo")
+    ])
+    // 只保留 PERPETUAL + TRADING + USDT
+    let valid=new Set(), onboard={}
+    ;(exInfo.symbols||[]).forEach(s=>{
+        if(s.symbol.endsWith("USDT")&&s.contractType==="PERPETUAL"&&s.status==="TRADING"){
+            valid.add(s.symbol)
+            if(s.onboardDate) onboard[s.symbol]=s.onboardDate
+        }
+    })
+    log(`有效永續合約：${valid.size}`,'info')
+    let now=Date.now(), minAge=3*86400000
     let filtered=tickers
-        .filter(t=>t.symbol.endsWith("USDT"))
-        .filter(t=>!EXCLUDED_TOP_15.includes(t.symbol))
-        .filter(t=>parseFloat(t.quoteVolume)>2000000)
+        .filter(t=>valid.has(t.symbol))
+        .filter(t=>!EXCLUDED_TOP35.has(t.symbol))
+        .filter(t=>{ let ob=onboard[t.symbol]; return !ob||(now-ob)>minAge })
+        .filter(t=>parseFloat(t.quoteVolume)>5000000)
         .sort((a,b)=>parseFloat(b.quoteVolume)-parseFloat(a.quoteVolume))
         .slice(0,ENGINE.universeSize)
-
     CURRENT_UNIVERSE=filtered.map(t=>t.symbol)
-
     CURRENT_UNIVERSE.forEach(s=>{
-        if(!SYMBOL_POOL[s])
-            SYMBOL_POOL[s]=createEmptySymbol()
+        if(!SYMBOL_POOL[s]) SYMBOL_POOL[s]=createEmptySymbol()
+        SYMBOL_POOL[s].quoteVolume=parseFloat(filtered.find(f=>f.symbol===s)?.quoteVolume||0)
     })
+    OI_QUEUE_IDX=0
+    log(`Universe：${CURRENT_UNIVERSE.length}幣`,'info')
+    document.getElementById('uniCnt').textContent=CURRENT_UNIVERSE.length
 }
 
-//////////////////////////////////////////////////////////////////
-// 30 分鐘輪替
-//////////////////////////////////////////////////////////////////
+//──────────────────── 預熱 K 線 ────────────────────
+async function warmUpHistory(){
+    log('預熱K線...','warn')
+    const BATCH=5, DELAY=900
+    try{
+        let [b15,b1]=await Promise.all([
+            safeFetch(`https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=15m&limit=200`),
+            safeFetch(`https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=120`)
+        ])
+        BTC_POOL.k15=b15.map(pk); BTC_POOL.k1=b1.map(pk)
+        BTC_POOL.lastPrice=BTC_POOL.k15.at(-1)?.close||0
+        log('BTC K線OK','info')
+    }catch(e){log('BTC K線失敗','err')}
+    for(let i=0;i<CURRENT_UNIVERSE.length;i+=BATCH){
+        let batch=CURRENT_UNIVERSE.slice(i,i+BATCH)
+        await Promise.all(batch.map(async sym=>{
+            try{
+                let [k15,k1]=await Promise.all([
+                    safeFetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=15m&limit=200`),
+                    safeFetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=1m&limit=120`)
+                ])
+                let s=SYMBOL_POOL[sym]; if(!s) return
+                s.k15=k15.map(pk); s.k1=k1.map(pk)
+                s.lastPrice=s.k15.at(-1)?.close||0
+            }catch(e){ log(`${sym} 預熱失敗`,'err') }
+        }))
+        if(i+BATCH<CURRENT_UNIVERSE.length) await sleep(DELAY)
+    }
+    log('K線預熱完成','info')
+}
 
+function pk(k){
+    return{open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5]}
+}
+
+//──────────────────── 輪替 ────────────────────
 async function rotateUniverse(){
-
-    if(STREAM_SOCKET) STREAM_SOCKET.close()
-
-    CURRENT_UNIVERSE=[]
-    await buildUniverse()
-    connectStreamSocket()
+    STREAM_SOCKETS.forEach(ws=>{try{ws.close()}catch(e){}})
+    STREAM_SOCKETS=[]; CURRENT_UNIVERSE=[]
+    try{
+        await buildUniverse(); await warmUpHistory(); connectAllSockets()
+    }catch(e){ log('輪替失敗:'+e.message,'err') }
 }
 
-//////////////////////////////////////////////////////////////////
-// 建立固定 Stream
-//////////////////////////////////////////////////////////////////
-
-function connectStreamSocket(){
-
+//──────────────────── WebSocket ────────────────────
+function connectAllSockets(){
     let streams=["btcusdt@kline_15m","btcusdt@kline_1m"]
-
     CURRENT_UNIVERSE.forEach(s=>{
-        streams.push(`${s.toLowerCase()}@kline_15m`)
-        streams.push(`${s.toLowerCase()}@kline_1m`)
+        streams.push(`${s.toLowerCase()}@kline_15m`,`${s.toLowerCase()}@kline_1m`)
     })
+    let chunks=[]
+    for(let i=0;i<streams.length;i+=ENGINE.maxStreamPerWS)
+        chunks.push(streams.slice(i,i+ENGINE.maxStreamPerWS))
+    log(`建立${chunks.length}條WS，共${streams.length}streams`,'info')
+    chunks.forEach((c,i)=>openWS(c,i))
+}
 
-    let url=
-    "wss://fstream.binance.com/stream?streams="+
-    streams.join("/")
-
-    STREAM_SOCKET=new WebSocket(url)
-
-    STREAM_SOCKET.onmessage=(e)=>{
-
-        let msg=JSON.parse(e.data)
-        let data=msg.data
-        let s=data.s
-        let k=data.k
-
-        let obj={
-            close:parseFloat(k.c),
-            high:parseFloat(k.h),
-            low:parseFloat(k.l),
-            volume:parseFloat(k.v)
-        }
-
-        if(s==="BTCUSDT"){
-
-            BTC_POOL.lastPrice=parseFloat(k.c)
-
-            if(k.i==="15m"){
-                BTC_POOL.k15.push(obj)
-                if(BTC_POOL.k15.length>300)
-                    BTC_POOL.k15.shift()
-            }
-
-            if(k.i==="1m"){
-                BTC_POOL.k1.push(obj)
-                if(BTC_POOL.k1.length>300)
-                    BTC_POOL.k1.shift()
-            }
-
-            return
-        }
-
-        if(!SYMBOL_POOL[s]) return
-
-        SYMBOL_POOL[s].lastPrice=parseFloat(k.c)
-
-        if(k.i==="15m"){
-            SYMBOL_POOL[s].k15.push(obj)
-            if(SYMBOL_POOL[s].k15.length>300)
-                SYMBOL_POOL[s].k15.shift()
-        }
-
-        if(k.i==="1m"){
-            SYMBOL_POOL[s].k1.push(obj)
-            if(SYMBOL_POOL[s].k1.length>300)
-                SYMBOL_POOL[s].k1.shift()
-        }
+function openWS(streams,idx){
+    let url="wss://fstream.binance.com/stream?streams="+streams.join("/")
+    let ws=new WebSocket(url)
+    STREAM_SOCKETS[idx]=ws
+    ws.onopen=()=>{
+        log(`WS[${idx}]連線(${streams.length})`,'info')
+        let el=document.getElementById('wsSt')
+        el.textContent='LIVE'; el.style.color='#22c55e'
     }
-
-    STREAM_SOCKET.onclose=()=>{
-        if(ENGINE.running)
-            setTimeout(connectStreamSocket,ENGINE.reconnectDelay)
+    ws.onmessage=(e)=>{
+        try{
+            let msg=JSON.parse(e.data)
+            let d=msg.data||msg
+            if(d&&d.k) processKline(d)
+        }catch(err){}
+    }
+    ws.onerror=()=>log(`WS[${idx}]錯誤`,'err')
+    ws.onclose=()=>{
+        let el=document.getElementById('wsSt')
+        el.textContent='斷線'; el.style.color='#f59e0b'
+        log(`WS[${idx}]斷線，重連中`,'warn')
+        if(ENGINE.running) setTimeout(()=>{if(ENGINE.running)openWS(streams,idx)},ENGINE.reconnectDelay)
     }
 }
 
-//////////////////////////////////////////////////////////////////
-// OI 慢速輪詢
-//////////////////////////////////////////////////////////////////
+function processKline(d){
+    let sym=d.s, k=d.k
+    let bar={open:+k.o,high:+k.h,low:+k.l,close:+k.c,volume:+k.v}
+    if(sym==="BTCUSDT"){
+        BTC_POOL.lastPrice=bar.close
+        pushBar(BTC_POOL,k.i,bar); return
+    }
+    let s=SYMBOL_POOL[sym]; if(!s) return
+    s.lastPrice=bar.close
+    pushBar(s,k.i,bar)
+    if(s.inPosition&&k.i==="1m"){
+        if(bar.high>s.lastHigh) s.lastHigh=bar.high
+        checkTrail(sym,bar.close)
+    }
+}
 
-setInterval(()=>{
-    if(!ENGINE.running) return
+function pushBar(pool,interval,bar){
+    let arr=interval==="15m"?pool.k15:interval==="1m"?pool.k1:null
+    if(!arr) return
+    arr.push(bar)
+    if(arr.length>ENGINE.historyBars) arr.shift()
+}
 
-    CURRENT_UNIVERSE.forEach(symbol=>{
-        fetch(
-        `https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`
-        )
-        .then(r=>r.json())
-        .then(d=>{
-            let s=SYMBOL_POOL[symbol]
-            s.prevOI=s.oi
-            s.oi=parseFloat(d.openInterest)
+//──────────────────── OI 序列輪詢 ────────────────────
+function startOIQueue(){
+    oiTimer=setInterval(async()=>{
+        if(!ENGINE.running||!CURRENT_UNIVERSE.length) return
+        let sym=CURRENT_UNIVERSE[OI_QUEUE_IDX%CURRENT_UNIVERSE.length]
+        OI_QUEUE_IDX++
+        try{
+            let d=await safeFetch(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${sym}`)
+            let s=SYMBOL_POOL[sym]; if(!s||!d?.openInterest) return
+            s.prevOI=s.oi; s.oi=parseFloat(d.openInterest)
             s.oiHistory.push(s.oi)
-            if(s.oiHistory.length>30)
-                s.oiHistory.shift()
-        })
-    })
+            if(s.oiHistory.length>30) s.oiHistory.shift()
+        }catch(e){}
+    },ENGINE.oiQueueInterval)
+}
 
-},ENGINE.oiInterval)
-
-</script>
-<script>
-
-//////////////////////////////////////////////////////////////////
-// V13 STRATEGY ENGINE – FULL FOUR LAYER (ROTATION COMPATIBLE)
-//////////////////////////////////////////////////////////////////
-
-////////////////////////////
-// 基礎工具
-////////////////////////////
-
+//==============================================================
+// 數學工具
+//==============================================================
 function MA(data,n){
     if(data.length<n) return 0
     return data.slice(-n).reduce((a,b)=>a+b.close,0)/n
 }
-
 function getHigh(data,n){
     if(data.length<n) return 0
     return Math.max(...data.slice(-n).map(c=>c.high))
 }
-
 function getLow(data,n){
     if(data.length<n) return 0
     return Math.min(...data.slice(-n).map(c=>c.low))
 }
-
 function ATR(data,n){
     if(data.length<n+1) return 0
-    let trs=[]
-    for(let i=1;i<data.length;i++){
-        let high=data[i].high
-        let low=data[i].low
-        let prev=data[i-1].close
+    let sum=0,cnt=0
+    for(let i=Math.max(1,data.length-n);i<data.length;i++){
         let tr=Math.max(
-            high-low,
-            Math.abs(high-prev),
-            Math.abs(low-prev)
+            data[i].high-data[i].low,
+            Math.abs(data[i].high-data[i-1].close),
+            Math.abs(data[i].low-data[i-1].close)
         )
-        trs.push(tr)
+        sum+=tr; cnt++
     }
-    return trs.slice(-n).reduce((a,b)=>a+b,0)/n
+    return cnt?sum/cnt:0
+}
+function EMA(data,n){
+    if(data.length<n) return 0
+    let k=2/(n+1), ema=data[data.length-n].close
+    for(let i=data.length-n+1;i<data.length;i++) ema=data[i].close*k+ema*(1-k)
+    return ema
+}
+function slopeN(data,n){
+    if(data.length<n) return 0
+    let bars=data.slice(-n), mean=bars.reduce((a,b)=>a+b.close,0)/n
+    let num=0,den=0
+    bars.forEach((b,i)=>{num+=(i-(n-1)/2)*(b.close-mean);den+=(i-(n-1)/2)**2})
+    return den?num/den:0
 }
 
-//////////////////////////////////////////////////////////////////
-// 主策略
-//////////////////////////////////////////////////////////////////
+//==============================================================
+// ★ 成交量密集區（Volume Profile） ────────────────────────────
+// 用途：
+//   calcVPOC(bars)  → {poc, support, resistance}
+//   poc        = 成交量最大價格
+//   support    = 成交量密集帶「底部」 → 止損位
+//   resistance = 成交量密集帶「頂部」 → 止盈參考
+// 演算法：
+//   1. 把近N根K線的高低價等分成BUCKETS個價格槽
+//   2. 每根K線的成交量依比例分配到覆蓋的槽
+//   3. 找出成交量最大槽（POC）
+//   4. 往下找第一個成交量<均量50%的槽 → 支撐底部
+//   5. 往上找第一個成交量<均量50%的槽 → 壓力頂部
+//==============================================================
+function calcVPOC(bars, buckets=40){
+    if(bars.length<5) return{poc:0,support:0,resistance:0}
+    let hi=Math.max(...bars.map(b=>b.high))
+    let lo=Math.min(...bars.map(b=>b.low))
+    if(hi<=lo) return{poc:0,support:0,resistance:0}
+    let step=(hi-lo)/buckets
+    let vol=new Array(buckets).fill(0)
+    bars.forEach(b=>{
+        let bLo=Math.max(0,Math.floor((b.low-lo)/step))
+        let bHi=Math.min(buckets-1,Math.floor((b.high-lo)/step))
+        let span=bHi-bLo+1
+        for(let i=bLo;i<=bHi;i++) vol[i]+=b.volume/span
+    })
+    // POC 索引
+    let pocIdx=vol.indexOf(Math.max(...vol))
+    let poc=lo+pocIdx*step+step/2
+    // 均量（過濾低頻槽用）
+    let avgVol=vol.reduce((a,b)=>a+b,0)/buckets
+    let threshold=avgVol*0.45
+    // 往下找支撐底部（poc往下第一個量低槽 = 支撐下緣）
+    let supportIdx=pocIdx
+    for(let i=pocIdx-1;i>=0;i--){
+        if(vol[i]<threshold){ supportIdx=i+1; break }
+        if(i===0) supportIdx=0
+    }
+    // 往上找壓力頂部
+    let resistIdx=pocIdx
+    for(let i=pocIdx+1;i<buckets;i++){
+        if(vol[i]<threshold){ resistIdx=i-1; break }
+        if(i===buckets-1) resistIdx=buckets-1
+    }
+    let support=lo+supportIdx*step
+    let resistance=lo+resistIdx*step+step
+    return{poc,support,resistance}
+}
 
-function runFullStrategy(symbol){
+//==============================================================
+// ★ 主策略
+//==============================================================
+function runStrategy(symbol){
+    let s=SYMBOL_POOL[symbol]; if(!s) return
+    if(s.k15.length<ENGINE.minBars15||s.k1.length<ENGINE.minBars1) return
+    if(BTC_POOL.k15.length<ENGINE.minBars15) return
+    let price=s.lastPrice; if(price<=0) return
 
-    let s=SYMBOL_POOL[symbol]
-    if(!s) return
+    //────── 第一層：趨勢結構（最高28分）──────
+    let ma7=MA(s.k15,7), ma20=MA(s.k15,20), ma25=MA(s.k15,25), ma99=MA(s.k15,99)
+    let structStrong=(ma7>ma20&&ma20>ma25&&ma25>ma99)
+    let structBuild=(ma7>ma20&&ma20>ma25)
+    let structBase=(ma7>ma20)
+    let slUp=slopeN(s.k15,5)>0
+    let priceAboveMA=(price>ma7)
+    let structScore=structStrong?20:(structBuild?14:(structBase?8:0))
+    let slopeScore=(slUp?5:0)+(priceAboveMA?3:0)
 
-    if(s.k15.length<120 || s.k1.length<60) return
-    if(BTC_POOL.k15.length<120) return
+    //────── 第二層：突破（最高22分）──────
+    let high20=getHigh(s.k15,20), high35=getHigh(s.k15,35)
+    let bo20=price>high20, bo35=price>high35
+    let near20=price>high20*0.993
+    // 確認：1m上最近3根收盤高於突破位
+    let last3_1m=s.k1.slice(-3)
+    let bo1mConfirm=bo20&&last3_1m.length===3&&last3_1m.every(c=>c.close>high20*0.99)
+    let breakScore=bo1mConfirm?22:(bo35?16:(bo20?12:(near20?7:0)))
 
-    let price=s.lastPrice
-
-    //////////////////////////////////////////////////////////////
-    // 第一層：趨勢結構
-    //////////////////////////////////////////////////////////////
-
-    let ma7=MA(s.k15,7)
-    let ma20=MA(s.k15,20)
-    let ma25=MA(s.k15,25)
-    let ma99=MA(s.k15,99)
-
-    let structureStrong=(ma7>ma20 && ma20>ma25 && ma25>ma99)
-    let structureBuild=(ma7>ma20 && ma20>ma25)
-    let slopeUp=ma7>MA(s.k15.slice(0,-1),7)
-
-    //////////////////////////////////////////////////////////////
-    // 第二層：突破層
-    //////////////////////////////////////////////////////////////
-
-    let high35=getHigh(s.k15,35)
-    let breakout=price>high35
-    let nearBreak=price>high35*0.995
-
-    //////////////////////////////////////////////////////////////
-    // 第三層：動能層
-    //////////////////////////////////////////////////////////////
-
-    let recent=s.k15.slice(-35)
-    let avgVol=recent.reduce((a,b)=>a+b.volume,0)/35
-    let volNow=s.k15[s.k15.length-1].volume
-    let volRatio=volNow/avgVol
-
-    let atr15=ATR(s.k15,14)
-    let atrPast=ATR(s.k15.slice(0,-5),14)
-    let atrExpand=atr15>atrPast
-
+    //────── 第三層：動能（最高24分）──────
+    // 15m量能
+    let recent20=s.k15.slice(-20)
+    let avgVol15=recent20.reduce((a,b)=>a+b.volume,0)/20
+    let volNow15=s.k15.at(-1).volume
+    let volR15=avgVol15>0?volNow15/avgVol15:1
+    // 1m量能（近10根均量）
+    let avg1m=s.k1.slice(-15).reduce((a,b)=>a+b.volume,0)/15
+    let volNow1m=s.k1.at(-1)?.volume||0
+    let volR1m=avg1m>0?volNow1m/avg1m:1
+    // ATR 擴張
+    let atr15=ATR(s.k15,14), atrPast=ATR(s.k15.slice(0,-5),14)
+    let atrExp=atrPast>0&&atr15>atrPast*1.05
     let btcATR=ATR(BTC_POOL.k15,14)
-    let atrDecouple=atr15>btcATR*1.2
+    let atrDec=btcATR>0&&atr15>btcATR*1.15
+    let vol15Score=volR15>2.5?14:(volR15>2?11:(volR15>1.5?7:(volR15>1.2?4:0)))
+    let vol1mScore=volR1m>2?5:(volR1m>1.5?3:0)
+    let atrScore=(atrExp?3:0)+(atrDec?2:0)
 
-    //////////////////////////////////////////////////////////////
-    // 第四層：OI 主力層
-    //////////////////////////////////////////////////////////////
-
-    let oiNow=s.oi
-    let oiPrev=s.prevOI||oiNow
+    //────── 第四層：OI（最高26分）──────
+    let oiNow=s.oi, oiPrev=s.prevOI||oiNow
     let oiChange=oiPrev>0?((oiNow-oiPrev)/oiPrev*100):0
-
-    let oiBuild=oiChange>0.5
-    let oiStrong=oiChange>2
-
-    let oiTrendUp=false
-    if(s.oiHistory.length>=5){
-        let recentOI=s.oiHistory.slice(-5)
-        oiTrendUp=recentOI[4]>recentOI[0]
+    let oiBuild=oiChange>0.3, oiStrong=oiChange>1.5
+    let oiTrend=false, oiConUp=0
+    if(s.oiHistory.length>=4){
+        let rOI=s.oiHistory.slice(-4)
+        oiTrend=rOI[3]>rOI[0]
+        for(let i=rOI.length-1;i>0;i--){if(rOI[i]>rOI[i-1])oiConUp++;else break}
     }
+    let oiScore=(oiStrong?14:(oiBuild?7:0))+(oiTrend?7:0)+(oiConUp>=3?5:0)
 
-    //////////////////////////////////////////////////////////////
-    // 第五層：BTC 脫鉤
-    //////////////////////////////////////////////////////////////
-
+    //────── 第五層：BTC 脫鉤（最高12分）──────
     let btcPrice=BTC_POOL.lastPrice
-    let btcHigh35=getHigh(BTC_POOL.k15,35)
+    let btcHigh20=getHigh(BTC_POOL.k15,20)
+    let btcMA7=MA(BTC_POOL.k15,7), btcMA20=MA(BTC_POOL.k15,20)
+    let priceDec=(price>high20&&btcPrice<btcHigh20*0.997)
+    let structDec=(structBuild&&!(btcMA7>btcMA20))
+    let sym1hRet=s.k1.length>=60?(s.k1.at(-1).close/s.k1[s.k1.length-61].close-1)*100:0
+    let btc1hRet=BTC_POOL.k1.length>=60?(BTC_POOL.k1.at(-1).close/BTC_POOL.k1[BTC_POOL.k1.length-61].close-1)*100:0
+    let retDec=btc1hRet!==0&&sym1hRet>btc1hRet*1.8
+    let decScore=(priceDec?5:0)+(structDec?3:0)+(retDec?4:0)
 
-    let priceDecouple=(price>high35 && btcPrice<btcHigh35)
+    //────── 第六層：POC（最高8分）──────
+    // 用 1m 前30根做 Volume Profile
+    let vp1m=calcVPOC(s.k1.slice(-30),40)
+    let pocBreak=price>vp1m.poc
+    let pocDist=vp1m.poc>0?((price-vp1m.poc)/vp1m.poc*100):0
+    let pocScore=pocBreak?(pocDist>0.5?8:5):0
 
-    let btcMA7=MA(BTC_POOL.k15,7)
-    let btcMA20=MA(BTC_POOL.k15,20)
-    let btcStructure=(btcMA7>btcMA20)
+    //────── ★ 風控計算（止損 + 止盈）──────
+    // 止損：1m前30根Volume Profile的支撐底部
+    // 若支撐底部過近（<0.5%），改用最近30根1m最低點
+    let vpSupport=vp1m.support
+    let rawLow=getLow(s.k1,30)
+    // 取「較高的那個」作為更精確的支撐（不過低取最低點兜底）
+    let stopPrice=vpSupport>rawLow*1.001?vpSupport:rawLow
+    // 再往下留一點緩衝（0.1%）避免被刷掉
+    stopPrice=stopPrice*(1-0.001)
+    let stopDist=price>0?((price-stopPrice)/price*100):0
 
-    let structureDecouple=(structureStrong && !btcStructure)
+    // 止盈TP1：1m前30根壓力頂部
+    let tp1=vp1m.resistance>price?vp1m.resistance:0
+    // 止盈TP2：1m平均ATR × 倍數
+    let atr1m=ATR(s.k1,14)
+    s.atr1m=atr1m
+    let tp2=atr1m>0?price+atr1m*ENGINE.tpAtrMult:0
+    // 若TP1比TP2高，優先用TP2（更保守），反之用TP1（更激進）
+    // 兩個都輸出，讓使用者自選
+    let suggestLev=stopDist>0?Math.min(Math.floor(ENGINE.riskPct/stopDist*100),20):1
 
-    let volumeDecouple=(volRatio>1.5 && atrDecouple)
+    s.stopPrice=stopPrice; s.stopDist=stopDist
+    s.tp1=tp1; s.tp2=tp2
+    s.suggestLev=suggestLev
+    s.poc=vp1m.poc; s.pocResistance=vp1m.resistance
 
-    //////////////////////////////////////////////////////////////
-    // 第六層：POC
-    //////////////////////////////////////////////////////////////
-
-    let bucket={}
-    recent.forEach(c=>{
-        let key=(Math.round(c.close*100)/100).toFixed(2)
-        if(!bucket[key]) bucket[key]=0
-        bucket[key]+=c.volume
-    })
-
-    let poc=Object.keys(bucket)
-        .sort((a,b)=>bucket[b]-bucket[a])[0]
-
-    s.poc=parseFloat(poc)
-    let pocBreak=price>s.poc
-
-    //////////////////////////////////////////////////////////////
-    // 第七層：風控
-    //////////////////////////////////////////////////////////////
-
-    let support=getLow(s.k1,50)
-    let stopDistance=price>0?((price-support)/price*100):0
-
-    s.support=support
-    s.stopDistance=stopDistance
-
-    //////////////////////////////////////////////////////////////
-    // 主力撤退模型
-    //////////////////////////////////////////////////////////////
-
-    let whaleExit=false
-    if(oiChange<-1.5 && volRatio<1){
-        whaleExit=true
+    //────── 出場追蹤 ──────
+    if(s.oiHistory.length>=2){
+        let last=s.oiHistory.at(-1), prev=s.oiHistory.at(-2)
+        if(last<prev) s.exitCheckOIDown++; else s.exitCheckOIDown=0
     }
+    s.exitVolDown=(volR15<0.75)
+    if(s.inPosition&&price>0) s.exitNoNewHigh=(price<s.lastHigh*0.997)
 
-    //////////////////////////////////////////////////////////////
-    // 分數系統（完整四層）
-    //////////////////////////////////////////////////////////////
+    // 出場：2條成立即觸發（降低門檻）
+    let exitCount=
+        (s.exitCheckOIDown>=2?1:0)+
+        (s.exitVolDown?1:0)+
+        (s.exitNoNewHigh?1:0)
+    let exitSignal=exitCount>=2
+    // 強出：OI急降 + 量縮
+    if(oiChange<-1.2&&volR15<0.7) exitSignal=true
+    let exitReason=[]
+    if(s.exitCheckOIDown>=2) exitReason.push(`OI連降${s.exitCheckOIDown}根`)
+    if(s.exitVolDown) exitReason.push('量縮')
+    if(s.exitNoNewHigh) exitReason.push('未創高')
+    if(oiChange<-1.2&&volR15<0.7) exitReason.push('OI急降+量縮')
+    s.whaleExit=exitSignal
+    s.exitReason=exitReason.join(' / ')
 
-    let scoreDetails={
-
-        structure:structureStrong?20:(structureBuild?12:0),
-        slope:slopeUp?8:0,
-
-        breakout:breakout?20:(nearBreak?15:0),
-
-        volume:volRatio>2?20:(volRatio>1.5?15:(volRatio>1.2?8:0)),
-
-        atr:atrExpand?8:0,
-        atrDecouple:atrDecouple?8:0,
-
-        oi:oiStrong?15:(oiBuild?8:0),
-        oiTrend:oiTrendUp?8:0,
-
-        priceDecouple:priceDecouple?10:0,
-        structureDecouple:structureDecouple?8:0,
-        volumeDecouple:volumeDecouple?8:0,
-
-        poc:pocBreak?8:0
+    //────── 分數彙整 ──────
+    let sd={
+        structure:structScore, slope:slopeScore,
+        breakout:breakScore,
+        vol15:vol15Score, vol1m:vol1mScore, atr:atrScore,
+        oi:oiScore, decouple:decScore, poc:pocScore
     }
+    let total=Object.values(sd).reduce((a,b)=>a+b,0)
 
-    let total=Object.values(scoreDetails)
-        .reduce((a,b)=>a+b,0)
-
-    //////////////////////////////////////////////////////////////
-    // 狀態機
-    //////////////////////////////////////////////////////////////
-
+    //────── 狀態機 ──────
     let state="IDLE"
+    if(total>=100) state="STRONG"
+    else if(total>=82) state="BREAK"
+    else if(total>=65) state="BUILD"
+    else if(total>=48) state="RADAR"
 
-    if(total>=110) state="STRONG"
-    else if(total>=95) state="BREAK"
-    else if(total>=80) state="BUILD"
-    else if(total>=65) state="RADAR"
+    s.score=total; s.scoreDetails=sd; s.state=state
+    s.oiChange=oiChange; s.volRatio=volR15
+    s.sym1hRet=sym1hRet; s.btc1hRet=btc1hRet
 
-    //////////////////////////////////////////////////////////////
+    //────── pushLock 冷卻重置機制 ──────
+    // 當分數掉出觸發區後計數，滿pushCooldownBars且分數重新達標 → 解鎖可再推
+    let thrScore=THR_LEVELS[thrIdx].score
+    if(s.pushLock){
+        if(total<thrScore-10){
+            s.pushCooldown++
+        } else if(s.pushCooldown>=ENGINE.pushCooldownBars&&total>=thrScore){
+            s.pushLock=false; s.pushCooldown=0
+            log(`${symbol} 推播鎖解除（分數回升）`,'info')
+        }
+    }
 
-    s.score=total
-    s.scoreDetails=scoreDetails
-    s.state=state
-    s.whaleExit=whaleExit
+    handlePush(symbol)
 }
 
-//////////////////////////////////////////////////////////////////
-// 定期執行策略
-//////////////////////////////////////////////////////////////////
-
-setInterval(()=>{
-    if(!ENGINE.running) return
-
-    CURRENT_UNIVERSE.forEach(symbol=>{
-        runFullStrategy(symbol)
-    })
-
-},2500)
-
-</script>
-<style>
-body{background:#050505;color:#d4d4d8;font-family:monospace}
-.panel{padding:12px;border-bottom:1px solid #222}
-.card{background:#0f0f11;border:1px solid #222;padding:10px;margin:10px}
-.STRONG{border:2px solid #22c55e}
-.BREAK{border:2px solid #3b82f6}
-.BUILD{border:2px solid #f59e0b}
-.RADAR{border:2px solid #a855f7}
-.IDLE{border:1px solid #222}
-.alert{color:#ef4444}
-.small{font-size:12px;color:#aaa}
-</style>
-
-<div class="panel">
-<button onclick="startEngine()">開始掃描</button>
-<button onclick="stopEngine()">停止掃描</button>
-<span id="engineStatus">OFF</span>
-<br><br>
-
-<input id="tgToken" placeholder="TG BOT TOKEN">
-<input id="tgChat" placeholder="CHAT ID">
-<button onclick="testPush()">測試推播</button>
-
-<br><br>
-<div>當前監控幣數: <span id="universeCount">0</span></div>
-<div>下次輪替倒數: <span id="rotationTimer">--</span></div>
-</div>
-
-<div class="panel">
-<div id="scoreBoard"></div>
-</div>
-
-<div id="cards"></div>
-
-<script>
-
-//////////////////////////////////////////////////////////////////
-// Telegram
-//////////////////////////////////////////////////////////////////
-
-async function sendTG(msg){
-    let token=document.getElementById("tgToken").value.trim()
-    let chat=document.getElementById("tgChat").value.trim()
-    if(!token||!chat) return
-
-    fetch(`https://api.telegram.org/bot${token}/sendMessage`,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-            chat_id:chat,
-            text:msg
-        })
-    })
+//──────────────────── 移動止損 ────────────────────
+function checkTrail(symbol,price){
+    let s=SYMBOL_POOL[symbol]; if(!s||!s.inPosition) return
+    let entry=s.entryPrice; if(entry<=0) return
+    let fp=(price-entry)/entry*100
+    if(fp>=ENGINE.trail3Pct&&s.trailStage<3){
+        s.trailStage=3; s.currentStop=entry*(1+ENGINE.trail3Loc/100)
+        notifyTrail(symbol,fp,3,ENGINE.trail3Loc,s.currentStop)
+    } else if(fp>=ENGINE.trail2Pct&&s.trailStage<2){
+        s.trailStage=2; s.currentStop=entry*(1+ENGINE.trail2Loc/100)
+        notifyTrail(symbol,fp,2,ENGINE.trail2Loc,s.currentStop)
+    } else if(fp>=ENGINE.trail1Pct&&s.trailStage<1){
+        s.trailStage=1; s.currentStop=entry
+        notifyTrail(symbol,fp,1,0,s.currentStop)
+    }
 }
 
-function testPush(){
-    sendTG("✅ V13 固定20幣輪替版 測試成功")
+function notifyTrail(sym,fp,stage,loc,stop){
+    let tag=stage===1?'移至成本':`移至+${loc}%`
+    log(`💰 ${sym} 移動止損[${stage}] 浮盈${fp.toFixed(1)}% → ${tag}`,'signal')
+    sendTG(
+`💰 移動止損更新 ${sym}
+浮盈：+${fp.toFixed(2)}%
+止損移至：${tag} = ${stop.toFixed(6)}
+階段：${stage}/3`
+    )
 }
 
-//////////////////////////////////////////////////////////////////
-// 推播控制
-//////////////////////////////////////////////////////////////////
-
+//──────────────────── 推播控制 ────────────────────
 function handlePush(symbol){
+    let s=SYMBOL_POOL[symbol]; if(!s) return
+    let thrScore=THR_LEVELS[thrIdx].score
+    if(s.stopDist<ENGINE.stopMinDist) return
 
-    let s=SYMBOL_POOL[symbol]
-    if(!s) return
-
-    if(s.stopDistance<1.0) return
-
-    if(s.state==="STRONG" && !s.pushLock){
-
-        sendTG(
-`🔥 STRONG ${symbol}
-總分:${s.score}
-
-結構:${s.scoreDetails.structure}
-斜率:${s.scoreDetails.slope}
-突破:${s.scoreDetails.breakout}
-爆量:${s.scoreDetails.volume}
-ATR:${s.scoreDetails.atr}
-ATR脫鉤:${s.scoreDetails.atrDecouple}
-OI:${s.scoreDetails.oi}
-OI趨勢:${s.scoreDetails.oiTrend}
-價格脫鉤:${s.scoreDetails.priceDecouple}
-結構脫鉤:${s.scoreDetails.structureDecouple}
-量能脫鉤:${s.scoreDetails.volumeDecouple}
-POC:${s.scoreDetails.poc}
-
-支撐:${s.support?.toFixed(4)}
-止損距離:${s.stopDistance?.toFixed(2)}%`
-        )
-
-        s.pushLock=true
+    // 進場推播
+    if(s.score>=thrScore&&!s.pushLock){
+        s.pushLock=true; s.pushCooldown=0
+        sendTG(buildEntryMsg(symbol,s))
+        log(`📡 進場訊號 ${symbol} 分數:${s.score} 止損:${s.stopDist.toFixed(2)}%`,'signal')
     }
 
-    if(s.whaleExit && !s.exitLock){
-        sendTG(`⚠ EXIT ${symbol} 主力撤退`)
+    // 出場推播
+    if(s.whaleExit&&!s.exitLock){
         s.exitLock=true
+        sendTG(buildExitMsg(symbol,s))
+        log(`🚨 出場訊號 ${symbol} 原因:${s.exitReason}`,'exit')
     }
 }
 
-//////////////////////////////////////////////////////////////////
-// 記分板
-//////////////////////////////////////////////////////////////////
+function fmt(n,d=4){ return (n||0).toFixed(d) }
 
-function updateScoreBoard(){
-
-    let strong=0,breakN=0,build=0,radar=0
-
-    CURRENT_UNIVERSE.forEach(sym=>{
-        let s=SYMBOL_POOL[sym]
-        if(!s) return
-        if(s.state==="STRONG") strong++
-        if(s.state==="BREAK") breakN++
-        if(s.state==="BUILD") build++
-        if(s.state==="RADAR") radar++
-    })
-
-    document.getElementById("scoreBoard").innerHTML=
-        `STRONG:${strong} | BREAK:${breakN} | BUILD:${build} | RADAR:${radar}`
+function buildEntryMsg(sym,s){
+    let tp1Str=s.tp1>0?`${fmt(s.tp1)} (+${((s.tp1/s.lastPrice-1)*100).toFixed(2)}%)`:'—'
+    let tp2Str=s.tp2>0?`${fmt(s.tp2)} (+${((s.tp2/s.lastPrice-1)*100).toFixed(2)}%)`:'—'
+    return `🔥 進場訊號 ${sym}  [${THR_LEVELS[thrIdx].label}]
+━━━━━━━━━━━━━━━━━━
+💰 價格   ：${fmt(s.lastPrice)}
+🛑 止損   ：${fmt(s.stopPrice)}  (-${fmt(s.stopDist,2)}%)
+   └ 依據：1m前30根成交量密集底部
+🎯 止盈TP1：${tp1Str}
+   └ 依據：1m前30根壓力頂部
+🎯 止盈TP2：${tp2Str}
+   └ 依據：1m ATR×${ENGINE.tpAtrMult}
+⚡ 建議槓桿：${s.suggestLev}x  (風險${ENGINE.riskPct}%)
+━━━━━━━━━━━━━━━━━━
+📊 總分：${s.score}
+結構:${s.scoreDetails.structure} 斜率:${s.scoreDetails.slope} 突破:${s.scoreDetails.breakout}
+量15m:${s.scoreDetails.vol15} 量1m:${s.scoreDetails.vol1m} ATR:${s.scoreDetails.atr}
+OI:${s.scoreDetails.oi} 脫鉤:${s.scoreDetails.decouple} POC:${s.scoreDetails.poc}
+━━━━━━━━━━━━━━━━━━
+📈 1h漲幅：${fmt(s.sym1hRet,2)}% (BTC:${fmt(s.btc1hRet,2)}%)
+🏋 量能倍數：${fmt(s.volRatio,2)}x
+📂 OI變化：${fmt(s.oiChange,2)}%
+💡 移動止損：浮盈${ENGINE.trail1Pct}%→成本 ${ENGINE.trail2Pct}%→+${ENGINE.trail2Loc}% ${ENGINE.trail3Pct}%→+${ENGINE.trail3Loc}%`
 }
 
-//////////////////////////////////////////////////////////////////
-// 卡片顯示
-//////////////////////////////////////////////////////////////////
+function buildExitMsg(sym,s){
+    return `⚠️ 出場訊號 ${sym}
+條件：${s.exitReason}
+當前價：${fmt(s.lastPrice)}
+OI變化：${fmt(s.oiChange,2)}%
+量能倍數：${fmt(s.volRatio,2)}x`
+}
+
+//──────────────────── Telegram ────────────────────
+async function sendTG(msg){
+    let token=document.getElementById('tgToken').value.trim()
+    let chat=document.getElementById('tgChat').value.trim()
+    if(!token||!chat) return
+    try{
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({chat_id:chat,text:msg})
+        })
+    }catch(e){}
+}
+function testPush(){
+    sendTG(`✅ V15 QUANT ENGINE 測試\n監控幣：${CURRENT_UNIVERSE.length}\n進場門檻：${THR_LEVELS[thrIdx].label}`)
+}
+
+//──────────────────── UI ────────────────────
+function updateStatusBar(){
+    document.getElementById('lastUpd').textContent=new Date().toTimeString().slice(0,8)
+    document.getElementById('reqR').textContent=reqCountMin+'/min'
+}
 
 function renderCards(){
-
-    let container=document.getElementById("cards")
-    container.innerHTML=""
-
-    CURRENT_UNIVERSE.forEach(symbol=>{
-
-        let s=SYMBOL_POOL[symbol]
-        if(!s || !s.score) return
-
-        let div=document.createElement("div")
-        div.className="card "+s.state
-
+    let container=document.getElementById('cards')
+    container.innerHTML=''
+    let sorted=[...CURRENT_UNIVERSE].sort((a,b)=>(SYMBOL_POOL[b]?.score||0)-(SYMBOL_POOL[a]?.score||0))
+    let cnt={STRONG:0,BREAK:0,BUILD:0,RADAR:0,IDLE:0}
+    sorted.forEach(symbol=>{
+        let s=SYMBOL_POOL[symbol]; if(!s) return
+        let st=s.state||'IDLE'; cnt[st]=(cnt[st]||0)+1
+        let div=document.createElement('div')
+        div.className='card '+st
+        let thrScore=THR_LEVELS[thrIdx].score
+        let lockHtml=s.pushLock?
+            `<div class="lock-badge">🔒 已推播 冷卻:${s.pushCooldown}/${ENGINE.pushCooldownBars}</div>`:
+            (s.score>=thrScore?`<div class="cd-badge">⏳ 等待推播</div>`:'')
+        let tp1Str=s.tp1>0?`${fmt(s.tp1)} (+${((s.tp1/s.lastPrice-1)*100).toFixed(1)}%)`:'—'
+        let tp2Str=s.tp2>0?`${fmt(s.tp2)} (+${((s.tp2/s.lastPrice-1)*100).toFixed(1)}%)`:'—'
+        let trailHtml=s.inPosition?
+            `<div class="trail-row">⚡持倉 進場:${fmt(s.entryPrice)} 止損:${fmt(s.currentStop)} [階段${s.trailStage}]</div>`
+            :''
         div.innerHTML=`
-<b>${symbol}</b> 狀態:${s.state}<br>
-總分:${s.score}<br>
-<div class="small">
-結構:${s.scoreDetails.structure}
-斜率:${s.scoreDetails.slope}
-突破:${s.scoreDetails.breakout}
-爆量:${s.scoreDetails.volume}
-ATR:${s.scoreDetails.atr}
-ATR脫鉤:${s.scoreDetails.atrDecouple}
-OI:${s.scoreDetails.oi}
-OI趨勢:${s.scoreDetails.oiTrend}
-價格脫鉤:${s.scoreDetails.priceDecouple}
-結構脫鉤:${s.scoreDetails.structureDecouple}
-量能脫鉤:${s.scoreDetails.volumeDecouple}
-POC:${s.scoreDetails.poc}
+<div class="card-header">
+  <span class="card-symbol">${symbol}</span>
+  <span class="card-state state-${st}">${st}</span>
 </div>
-支撐:${s.support?.toFixed(4)}<br>
-止損距離:${s.stopDistance?.toFixed(2)}%<br>
-${s.whaleExit?'<span class="alert">主力撤退</span>':''}
-`
-
+<div class="card-score" style="color:${stClr(st)}">${s.score}<span style="font-size:13px;color:#555"> /120</span></div>
+<div class="score-grid">
+  <div class="score-item"><span>結構</span><span class="sv">${s.scoreDetails.structure??'-'}</span></div>
+  <div class="score-item"><span>斜率</span><span class="sv">${s.scoreDetails.slope??'-'}</span></div>
+  <div class="score-item"><span>突破</span><span class="sv">${s.scoreDetails.breakout??'-'}</span></div>
+  <div class="score-item"><span>量15m</span><span class="sv">${s.scoreDetails.vol15??'-'}</span></div>
+  <div class="score-item"><span>量1m</span><span class="sv">${s.scoreDetails.vol1m??'-'}</span></div>
+  <div class="score-item"><span>ATR</span><span class="sv">${s.scoreDetails.atr??'-'}</span></div>
+  <div class="score-item"><span>OI</span><span class="sv">${s.scoreDetails.oi??'-'}</span></div>
+  <div class="score-item"><span>脫鉤</span><span class="sv">${s.scoreDetails.decouple??'-'}</span></div>
+  <div class="score-item"><span>POC</span><span class="sv">${s.scoreDetails.poc??'-'}</span></div>
+</div>
+<hr class="divider">
+<div class="card-risk">
+  <span class="rl">止損</span><span class="rv sl-row">${fmt(s.stopPrice)} (-${fmt(s.stopDist,2)}%)</span>
+  <span class="rl">TP1壓力</span><span class="rv tp-row">${tp1Str}</span>
+  <span class="rl">TP2 ATR</span><span class="rv tp-row">${tp2Str}</span>
+  <span class="rl">槓桿建議</span><span class="rv">${s.suggestLev}x</span>
+  <span class="rl">量能</span><span class="rv">${fmt(s.volRatio,2)}x</span>
+  <span class="rl">OI</span><span class="rv">${fmt(s.oiChange,2)}%</span>
+</div>
+${s.whaleExit?`<div class="alert-exit">⚠ 出場信號：${s.exitReason}</div>`:''}
+${trailHtml}
+${lockHtml}`
         container.appendChild(div)
-        handlePush(symbol)
     })
-
-    document.getElementById("universeCount").innerText=
-        CURRENT_UNIVERSE.length
-
-    document.getElementById("engineStatus").innerText=
-        ENGINE.running?"ON":"OFF"
+    document.getElementById('cS').textContent='STRONG:'+cnt.STRONG
+    document.getElementById('cB').textContent='BREAK:'+(cnt.BREAK||0)
+    document.getElementById('cBu').textContent='BUILD:'+(cnt.BUILD||0)
+    document.getElementById('cR').textContent='RADAR:'+(cnt.RADAR||0)
+    document.getElementById('cI').textContent='IDLE:'+(cnt.IDLE||0)
 }
 
-//////////////////////////////////////////////////////////////////
-// 輪替倒數
-//////////////////////////////////////////////////////////////////
-
-let rotationLeft=ENGINE.rotationInterval
-
-setInterval(()=>{
-    if(!ENGINE.running) return
-    rotationLeft-=1000
-    if(rotationLeft<=0) rotationLeft=ENGINE.rotationInterval
-
-    let min=Math.floor(rotationLeft/60000)
-    let sec=Math.floor((rotationLeft%60000)/1000)
-
-    document.getElementById("rotationTimer").innerText=
-        `${min}m ${sec}s`
-
-},1000)
-
-//////////////////////////////////////////////////////////////////
-// UI 更新
-//////////////////////////////////////////////////////////////////
-
-setInterval(()=>{
-    if(!ENGINE.running) return
-    updateScoreBoard()
-    renderCards()
-},3000)
-
+function stClr(st){
+    return{STRONG:'#22c55e',BREAK:'#3b82f6',BUILD:'#f59e0b',RADAR:'#a855f7',IDLE:'#333'}[st]||'#333'
+}
 </script>
+</body>
+</html>
